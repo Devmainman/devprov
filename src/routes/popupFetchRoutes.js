@@ -8,6 +8,7 @@ import {
   acknowledgePopupMessage,
   getUserFormSubmissions
 } from '../controllers/popupFetchController.js';
+import { getUserAssignments } from '../controllers/assignmentController.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.get('/popup-forms', authenticate, getAvailablePopupForms);
 router.get('/popup-invoices', authenticate, getAvailablePopupInvoices);
 router.get('/popup-messages', authenticate, getAvailablePopupMessages);
 router.get('/form-submissions', authenticate, getUserFormSubmissions);
+router.get('/assignments', authenticate, getUserAssignments);
 
 // POST/PATCH endpoints
 router.post('/popup-forms/:itemId/submit', authenticate, submitPopupForm);
