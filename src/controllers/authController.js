@@ -176,3 +176,52 @@ export const logout = async (req, res) => {
     });
   }
 };
+
+export const verifyAdminAccess = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Token is required' });
+    }
+
+    // Verify the JWT token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded.isAdminAccess || !decoded.userId) {
+      return res.status(401).json({ success: false, message: 'Invalid admin access token' });
+    }
+
+    // Fetch user data
+    const user = await User.findById(decoded.userId).select('-password -__v');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Generate a new session token (same format as regular login)
+    const sessionToken = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        accountId: user.accountId,
+        isVerified: true, // Treat admin access as verified
+        // Add other fields needed by UserAuthContext
+      },
+      token: sessionToken,
+      message: 'Admin access verified'
+    });
+  } catch (err) {
+    console.error('Verify admin access error:', err);
+    if (err.name === 'JsonWebTokenError') {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+    res.status(500).json({ success: false, message: 'Server error verifying admin access' });
+  }
+};

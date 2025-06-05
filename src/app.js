@@ -44,6 +44,7 @@ import verificationRoutes from './routes/verificationRoutes.js';
 import adminVerificationRoutes from './routes/adminVerificationRoutes.js';
 import massages from './routes/messageRoutes.js';
 import adminTradingRoutes from './routes/adminTradingRoutes.js';
+import authRoutes from './routes/authRoutes.js'
 
 // Verify environment loaded
 console.log('Environment loaded:', {
@@ -78,6 +79,7 @@ const twilioClient = env.TWILIO_ACCOUNT_SID
 console.log('Twilio Client Status:', twilioClient ? 'Ready' : 'Disabled');
 
 // Middleware
+
 app.use(cors());
 app.use(express.json());
 app.use(fileUpload({
@@ -86,6 +88,8 @@ app.use(fileUpload({
 }));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use('/api', authRoutes);
 
 // Routes
 app.use('/api/users', userRoutes);
@@ -112,6 +116,8 @@ app.use('/api', popupFetchRoutes);
 app.use('/api/admin/verifications', adminVerificationRoutes);
 app.use('/api', massages);
 app.use('/api/admin/trading', adminTradingRoutes);
+
+
 
 // Test routes
 app.get('/', (req, res) => {

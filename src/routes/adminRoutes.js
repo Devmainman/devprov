@@ -27,6 +27,9 @@ import {
   updateUserSignal,
   sendMessageToUser
 } from '../controllers/adminUserController.js';
+
+import { getSettings, saveSettings } from '../controllers/settingsController.js';
+
 import {
   assignToUser,
   getUserAssignments,
@@ -56,6 +59,10 @@ router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.patch('/users/:id/status', toggleUserStatus);
 router.patch('/users/:id/wallet', updateWalletBalance);
+
+// New settings routes
+router.get('/settings', authenticate, isAdmin, getSettings);
+router.post('/settings', authenticate, isAdmin, saveSettings);
 
 // User action routes
 router.patch('/users/:id/withdrawal-lock', toggleWithdrawalLock);

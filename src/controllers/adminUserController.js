@@ -621,9 +621,13 @@ export const generateAdminAccess = async (req, res) => {
             { expiresIn: '1h' }
         );
         
+        // Construct the frontend dashboard URL with the token
+        const dashboardUrl = `http://localhost:1200/?adminAccessToken=${tempToken}`;
+        
         res.json({
             success: true,
             token: tempToken,
+            redirectUrl: dashboardUrl,
             message: 'Temporary admin access granted'
         });
     } catch (err) {
