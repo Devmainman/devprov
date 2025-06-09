@@ -1,4 +1,3 @@
-// models/Withdrawal.js
 import mongoose from 'mongoose';
 
 const withdrawalSchema = new mongoose.Schema({
@@ -26,7 +25,12 @@ const withdrawalSchema = new mongoose.Schema({
     label: String,
     value: String
   }],
-  adminNotes: String
+  adminNotes: String,
+  receipt: { 
+    type: String, 
+    trim: true, 
+    default: '' // Store file path or URL
+  }
 }, { timestamps: true });
 
 const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);

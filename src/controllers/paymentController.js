@@ -41,8 +41,17 @@ export const getPaymentMethods = async (req, res) => {
 // Create a deposit request
 export const createDeposit = async (req, res) => {
   try {
+    console.log('req.user:', req.user);
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'User not authenticated' 
+      });
+    }
+
     const { paymentMethodId, amount, currency } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     // Validate input
     if (!paymentMethodId || !amount || !currency) {

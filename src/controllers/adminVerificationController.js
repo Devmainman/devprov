@@ -16,10 +16,14 @@ const getDocumentUrls = (fileName, folder) => {
 export const getIdVerifications = async (req, res) => {
   try {
     const users = await User.find({
-      'verification.identityDocuments': { $exists: true, $not: { $size: 0 } }
+      'verification.identityDocuments': {
+        $exists: true,
+        $not: { $size: 0 },
+        $elemMatch: { frontImage: { $exists: true, $ne: null, $ne: '' } }
+      }
     })
-    .select('firstName lastName accountId email verification.identityDocuments verification.identityVerified')
-    .lean();
+      .select('firstName lastName accountId email verification.identityDocuments verification.identityVerified')
+      .lean();
 
     const verifications = users.flatMap(user => {
       return user.verification.identityDocuments.map(doc => ({
@@ -31,7 +35,7 @@ export const getIdVerifications = async (req, res) => {
         frontImageUrl: getDocumentUrls(doc.frontImage, 'id_documents'),
         backImageUrl: getDocumentUrls(doc.backImage, 'id_documents'),
         status: doc.verified ? 'Approved' : (doc.rejected ? 'Rejected' : 'Pending'),
-        submittedDate: doc.uploadedAt,
+        submittedDate: doc.uploadedAt || new Date(user.createdAt), // Fallback to createdAt
         documentId: doc._id,
         currentStatus: user.verification.identityVerified ? 'Verified' : 'Not Verified'
       }));
@@ -147,10 +151,13 @@ export const updateIdVerification = async (req, res) => {
 export const getAddressVerifications = async (req, res) => {
   try {
     const users = await User.find({
-      'verification.proofOfAddress': { $exists: true }
+      'verification.proofOfAddress': {
+        $exists: true,
+        image: { $exists: true, $ne: null, $ne: '' }
+      }
     })
-    .select('firstName lastName accountId email address verification.proofOfAddress verification.addressVerified')
-    .lean();
+      .select('firstName lastName accountId email address verification.proofOfAddress verification.addressVerified')
+      .lean();
 
     const verifications = users.map(user => ({
       userId: user._id,
@@ -160,9 +167,9 @@ export const getAddressVerifications = async (req, res) => {
       address: user.address,
       documentType: user.verification.proofOfAddress.documentType,
       documentUrl: getDocumentUrls(user.verification.proofOfAddress.image, 'address_proofs'),
-      status: user.verification.proofOfAddress.verified ? 'Approved' : 
-              (user.verification.proofOfAddress.rejected ? 'Rejected' : 'Pending'),
-      submittedDate: user.verification.proofOfAddress.uploadedAt,
+      status: user.verification.proofOfAddress.verified ? 'Approved' :
+              user.verification.proofOfAddress.rejected ? 'Rejected' : 'Pending',
+      submittedDate: user.verification.proofOfAddress.uploadedAt || new Date(user.createdAt), // Fallback
       currentStatus: user.verification.addressVerified ? 'Verified' : 'Not Verified'
     }));
 
@@ -264,10 +271,10 @@ export const updateAddressVerification = async (req, res) => {
 export const getFacialVerifications = async (req, res) => {
   try {
     const users = await User.find({
-      'verification.faceImage': { $exists: true }
+      'verification.faceImage': { $exists: true, $ne: null, $ne: '' }
     })
-    .select('firstName lastName accountId email verification.faceImage verification.faceVerified')
-    .lean();
+      .select('firstName lastName accountId email verification.faceImage verification.faceVerified verification.faceRejected verification.faceSubmittedAt')
+      .lean();
 
     const verifications = users.map(user => ({
       userId: user._id,
@@ -275,9 +282,9 @@ export const getFacialVerifications = async (req, res) => {
       fullName: `${user.firstName} ${user.lastName}`,
       email: user.email,
       faceImageUrl: getDocumentUrls(user.verification.faceImage, 'face_images'),
-      status: user.verification.faceVerified ? 'Approved' : 
-              (user.verification.faceRejected ? 'Rejected' : 'Pending'),
-      submittedDate: user.verification.faceSubmittedAt,
+      status: user.verification.faceVerified ? 'Approved' :
+              user.verification.faceRejected ? 'Rejected' : 'Pending',
+      submittedDate: user.verification.faceSubmittedAt || new Date(user.createdAt), // Fallback to createdAt
       currentStatus: user.verification.faceVerified ? 'Verified' : 'Not Verified'
     }));
 
@@ -387,7 +394,8 @@ export const getVerificationCounts = async (req, res) => {
         'verification.identityDocuments': {
           $elemMatch: {
             verified: false,
-            rejected: { $ne: true }
+            rejected: { $ne: true },
+            frontImage: { $exists: true, $ne: null, $ne: '' }
           }
         }
       }),
@@ -396,12 +404,13 @@ export const getVerificationCounts = async (req, res) => {
         'verification.proofOfAddress': {
           $exists: true,
           verified: false,
-          rejected: { $ne: true }
+          rejected: { $ne: true },
+          image: { $exists: true, $ne: null, $ne: '' }
         }
       }),
       User.countDocuments({ 'verification.addressVerified': true }),
       User.countDocuments({
-        'verification.faceImage': { $exists: true },
+        'verification.faceImage': { $exists: true, $ne: null, $ne: '' },
         'verification.faceVerified': false,
         'verification.faceRejected': { $ne: true }
       }),

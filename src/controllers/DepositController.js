@@ -2,9 +2,9 @@ import Deposit from '../models/Deposit.js';
 import User from '../models/User.js';
 import Transaction from '../models/Transaction.js';
 import mongoose from 'mongoose';
+import path from 'path';
+import fs from 'fs';
 
-
-// Create new deposit (user)
 export const createDeposit = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -22,7 +22,6 @@ export const createDeposit = async (req, res) => {
       });
     }
 
-    // Handle file upload
     if (!req.files?.paymentProof) {
       await session.abortTransaction();
       session.endSession();
@@ -35,7 +34,7 @@ export const createDeposit = async (req, res) => {
     const paymentProof = req.files.paymentProof;
     const fileExt = path.extname(paymentProof.name);
     const fileName = `proof-${Date.now()}${fileExt}`;
-    const uploadPath = path.join(__dirname, '../uploads/paymentproof', fileName);
+    const uploadPath = path.join(__dirname, '../Uploads/payment-proofs', fileName);
 
     await paymentProof.mv(uploadPath);
 
@@ -46,7 +45,7 @@ export const createDeposit = async (req, res) => {
       paymentMethodId,
       amount: parseFloat(amount),
       currency,
-      paymentProof: `/paymentproof/${fileName}`,
+      paymentProof: `/payment-proofs/${fileName}`,
       transactionReference,
       status: 'pending'
     });
@@ -73,7 +72,6 @@ export const createDeposit = async (req, res) => {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    
     console.error('Create deposit error:', err);
     res.status(500).json({
       success: false,
@@ -83,7 +81,6 @@ export const createDeposit = async (req, res) => {
   }
 };
 
-// Get user's deposits
 export const getUserDeposits = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
@@ -108,7 +105,7 @@ export const getUserDeposits = async (req, res) => {
       icon: d.paymentMethodId?.icon || '💳',
       amount: d.amount.toLocaleString('en-US') + ' ' + d.currency,
       status: d.status,
-      receipt: d.paymentProof || ''
+      proofUrl: d.paymentProof || ''
     }));
 
     res.json({
@@ -117,8 +114,8 @@ export const getUserDeposits = async (req, res) => {
       pagination: {
         total,
         pages: Math.ceil(total / limit),
-        currentPage: page,
-        limit
+        currentPage: parseInt(page),
+        limit: parseInt(limit)
       }
     });
   } catch (err) {
@@ -130,8 +127,6 @@ export const getUserDeposits = async (req, res) => {
   }
 };
 
-
-// Get all deposits (admin)
 export const getDeposits = async (req, res) => {
   try {
     const { status, page = 1, limit = 20, search = '' } = req.query;
@@ -142,10 +137,11 @@ export const getDeposits = async (req, res) => {
     
     if (search) {
       query.$or = [
-        { paymentMethod: new RegExp(search, 'i') },
+        { paymentMethodId: new RegExp(search, 'i') },
         { transactionReference: new RegExp(search, 'i') },
-        { 'user.accountId': new RegExp(search, 'i') },
-        { 'user.fullName': new RegExp(search, 'i') }
+        { 'userId.accountId': new RegExp(search, 'i') },
+        { 'userId.firstName': new RegExp(search, 'i') },
+        { 'userId.lastName': new RegExp(search, 'i') }
       ];
     }
 
@@ -159,17 +155,15 @@ export const getDeposits = async (req, res) => {
       Deposit.countDocuments(query)
     ]);
 
-    // Format response to match frontend structure
     const formattedDeposits = deposits.map(d => ({
       id: d._id,
       date: d.createdAt,
-      accountId: d.userId.accountId,
-      fullName: `${d.userId.firstName} ${d.userId.lastName}`,
+      accountId: d.userId?.accountId || 'N/A',
+      fullName: d.userId ? `${d.userId.firstName} ${d.userId.lastName}` : 'Unknown',
       paymentMethod: d.paymentMethodId?.title || 'Bank Transfer',
-      icon: d.paymentMethodId?.icon || '💷Bank Trans',
+      icon: d.paymentMethodId?.icon || '💷',
       amount: d.amount.toLocaleString('en-US') + ' ' + d.currency,
       status: d.status,
-      receipt: d.paymentProof || '',
       proofUrl: d.paymentProof || '',
       reason: d.adminNotes || ''
     }));
@@ -180,8 +174,8 @@ export const getDeposits = async (req, res) => {
       pagination: {
         total,
         pages: Math.ceil(total / limit),
-        currentPage: page,
-        limit
+        currentPage: parseInt(page),
+        limit: parseInt(limit)
       }
     });
   } catch (err) {
@@ -193,7 +187,6 @@ export const getDeposits = async (req, res) => {
   }
 };
 
-// Update deposit status (admin)
 export const updateDepositStatus = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -201,9 +194,8 @@ export const updateDepositStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;
-    const adminId = req.admin.id;
+    const adminId = req.user.id; // Changed from req.admin.id
 
-    // Validate status
     if (!['approved', 'rejected', 'processing'].includes(status)) {
       await session.abortTransaction();
       session.endSession();
@@ -223,16 +215,13 @@ export const updateDepositStatus = async (req, res) => {
       });
     }
 
-    // If changing to approved
     if (status === 'approved' && deposit.status !== 'approved') {
-      // Add to user balance
       await User.findByIdAndUpdate(
         deposit.userId, 
         { $inc: { balance: deposit.amount } },
         { session }
       );
 
-      // Create transaction record
       await Transaction.create([{
         userId: deposit.userId,
         amount: deposit.amount,
@@ -243,9 +232,7 @@ export const updateDepositStatus = async (req, res) => {
       }], { session });
     }
 
-    // If changing from approved to rejected
     if (status === 'rejected' && deposit.status === 'approved') {
-      // Deduct from user balance
       await User.findByIdAndUpdate(
         deposit.userId, 
         { $inc: { balance: -deposit.amount } },
@@ -253,7 +240,6 @@ export const updateDepositStatus = async (req, res) => {
       );
     }
 
-    // Update deposit
     deposit.status = status;
     deposit.adminNotes = adminNotes;
     deposit.processedBy = adminId;
@@ -278,7 +264,47 @@ export const updateDepositStatus = async (req, res) => {
   }
 };
 
-// Delete deposit (admin)
+export const deletePaymentProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deposit = await Deposit.findById(id);
+
+    if (!deposit) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Deposit not found' 
+      });
+    }
+
+    if (!deposit.paymentProof) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No payment proof to delete' 
+      });
+    }
+
+    const filePath = path.join(__dirname, '../Uploads', deposit.paymentProof);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    deposit.paymentProof = '';
+    await deposit.save();
+
+    res.json({
+      success: true,
+      message: 'Payment proof deleted successfully'
+    });
+  } catch (err) {
+    console.error('Delete payment proof error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete payment proof',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
 export const deleteDeposit = async (req, res) => {
   try {
     const { id } = req.params;
@@ -289,6 +315,13 @@ export const deleteDeposit = async (req, res) => {
         success: false,
         message: 'Deposit not found' 
       });
+    }
+
+    if (deposit.paymentProof) {
+      const filePath = path.join(__dirname, '../Uploads', deposit.paymentProof);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
     }
 
     res.json({

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const settingSchema = new mongoose.Schema({
   websiteName: { type: String, default: '' },
-  wwwwebsitecom: { type: String, default: 'www.website.com' },
+  frontendURL: { type: String, default: 'http://localhost:5000/api/admin/login' }, // Renamed from wwwwebsitecom
   websiteUrl: { type: String, default: '' },
   logoutUrl: { type: String, default: '' },
   currencyApiKey: { type: String, default: '' },

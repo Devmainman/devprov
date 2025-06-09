@@ -2,6 +2,7 @@ import express from 'express';
 import { 
   getDeposits,
   updateDepositStatus,
+  deletePaymentProof,
   deleteDeposit,
   createDeposit,
   getUserDeposits
@@ -18,5 +19,6 @@ router.get('/my-deposits', authenticate, getUserDeposits);
 router.get('/', authenticate, isAdmin, getDeposits);
 router.put('/:id/status', authenticate, isAdmin, updateDepositStatus);
 router.delete('/:id', authenticate, isAdmin, deleteDeposit);
+router.delete('/:id/proof', authenticate, isAdmin, deletePaymentProof);
 
 export default router;

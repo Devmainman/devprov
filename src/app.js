@@ -6,6 +6,10 @@ import { fileURLToPath } from 'url';
 import fileUpload from 'express-fileupload';
 import jwt from 'jsonwebtoken';
 import expressWs from 'express-ws';
+import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
+import Setting from './models/Setting.js';
+import { trackHistory } from './middleware/trackHistory.js';
 
 // Configure __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -42,9 +46,11 @@ import referralRoutes from './routes/referralRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import verificationRoutes from './routes/verificationRoutes.js';
 import adminVerificationRoutes from './routes/adminVerificationRoutes.js';
-import massages from './routes/messageRoutes.js';
+import messageRoutes from './routes/messageRoutes.js';
 import adminTradingRoutes from './routes/adminTradingRoutes.js';
-import authRoutes from './routes/authRoutes.js'
+import authRoutes from './routes/authRoutes.js';
+import adminWithdrawalRoutes from './routes/adminWithdrawalRoutes.js';
+import adminDashboardRoutes from './routes/adminDashboardRoutes.js';
 
 // Verify environment loaded
 console.log('Environment loaded:', {
@@ -79,45 +85,53 @@ const twilioClient = env.TWILIO_ACCOUNT_SID
 console.log('Twilio Client Status:', twilioClient ? 'Ready' : 'Disabled');
 
 // Middleware
-
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 app.use(fileUpload({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   abortOnLimit: true
 }));
+app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Apply trackHistory middleware
+app.use(trackHistory);
 
-app.use('/api', authRoutes);
+// Rate limiter for admin routes
+const adminRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
+});
 
 // Routes
+app.use('/api', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminRateLimiter, adminRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/trading', tradingRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/admin/payments', adminPaymentRoutes);
-app.use('/api/admin/withdrawals', withdrawalMethodRoutes);
+app.use('/api/admin/payments', adminRateLimiter, adminPaymentRoutes);
+app.use('/api/admin/withdrawal-methods', adminRateLimiter, withdrawalMethodRoutes);
 app.use('/api/deposits', depositRoutes);
-app.use('/api/admin/popup-forms', popupFormRoutes);
-app.use('/api/admin/popup-invoices', popupInvoiceRoutes);
-app.use('/api/admin/popup-messages', popupMessageRoutes);
-app.use('/api/admin/assignments', assignmentRoutes);
+app.use('/api/admin/popup-forms', adminRateLimiter, popupFormRoutes);
+app.use('/api/admin/popup-invoices', adminRateLimiter, popupInvoiceRoutes);
+app.use('/api/admin/popup-messages', adminRateLimiter, popupMessageRoutes);
+app.use('/api/admin/assignments', adminRateLimiter, assignmentRoutes);
 app.use('/api/packages', packageRoutes);
-app.use('/api/admin', adminPopupManagementRoutes);
+app.use('/api/admin', adminRateLimiter, adminPopupManagementRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
 app.use('/api', publicWithdrawalRoutes);
 app.use('/api/public/packages', publicPackageRoutes);
 app.use('/api/referrals', referralRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', popupFetchRoutes);
-app.use('/api/admin/verifications', adminVerificationRoutes);
-app.use('/api', massages);
-app.use('/api/admin/trading', adminTradingRoutes);
-
-
+app.use('/api/admin/verifications', adminRateLimiter, adminVerificationRoutes);
+app.use('/api', messageRoutes);
+app.use('/api/admin/trading', adminRateLimiter, adminTradingRoutes);
+app.use('/api/admin/withdrawals', adminRateLimiter, adminWithdrawalRoutes);
+app.use('/api/admin/dashboard', adminRateLimiter, adminDashboardRoutes);
 
 // Test routes
 app.get('/', (req, res) => {
@@ -149,12 +163,10 @@ const server = app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
 
-
 // WebSocket Implementation
 const activeConnections = new Map();
 
 expressWsInstance.app.ws('/api/notifications/ws', (ws, req) => {
-  // 1. Authenticate using token from query params
   const token = req.query.token;
   
   if (!token) {
@@ -163,7 +175,6 @@ expressWsInstance.app.ws('/api/notifications/ws', (ws, req) => {
   }
 
   try {
-    // 2. Verify JWT without admin check
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.user?.id || decoded.userId;
     
@@ -172,32 +183,26 @@ expressWsInstance.app.ws('/api/notifications/ws', (ws, req) => {
       return ws.close(4001, 'Invalid user identification');
     }
 
-    // 3. Store connection without admin checks
     ws.userId = userId;
     activeConnections.set(userId, ws);
     console.log(`User ${userId} connected to notifications WebSocket`);
 
-    // 4. Send welcome message
     ws.send(JSON.stringify({
       type: 'connection',
       status: 'success',
       timestamp: Date.now()
     }));
 
-
-    // 5. Heartbeat system
     ws.isAlive = true;
     ws.on('pong', () => {
       ws.isAlive = true;
     });
 
-    // 6. Cleanup on close
     ws.on('close', () => {
       activeConnections.delete(userId);
       console.log(`User ${userId} disconnected`);
     });
 
-    // 7. Error handling
     ws.on('error', (error) => {
       console.error(`WS error for user ${userId}:`, error);
       activeConnections.delete(userId);
@@ -210,7 +215,6 @@ expressWsInstance.app.ws('/api/notifications/ws', (ws, req) => {
   }
 });
 
-// Heartbeat interval (global)
 const heartbeatInterval = setInterval(() => {
   activeConnections.forEach((ws, userId) => {
     if (ws.isAlive === false) {
@@ -222,15 +226,13 @@ const heartbeatInterval = setInterval(() => {
     ws.isAlive = false;
     ws.ping();
   });
-}, 30000); // Check every 30 seconds
+}, 30000);
 
-// Cleanup when server stops
 process.on('SIGTERM', () => {
   clearInterval(heartbeatInterval);
   activeConnections.forEach(ws => ws.close(1001, 'Server shutting down'));
 });
 
-// Notification sender
 export const sendNotification = (userId, data) => {
   const ws = activeConnections.get(userId);
   if (ws && ws.readyState === ws.OPEN) {

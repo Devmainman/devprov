@@ -4,7 +4,9 @@ import Package from '../models/Package.js';
 import PopupForm from '../models/PopupForm.js';
 import PopupInvoice from '../models/PopupInvoice.js';
 import PopupMessage from '../models/PopupMessage.js';
+import Setting from '../models/Setting.js';
 import jwt from 'jsonwebtoken';
+
 
 const transformUserForFrontend = (user) => {
     if (!user) return null;
@@ -606,47 +608,64 @@ export const toggleWithdrawalLock = async (req, res) => {
 
 export const generateAdminAccess = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        const tempToken = jwt.sign(
-            { userId: user._id, isAdminAccess: true },
-            process.env.JWT_SECRET,
-            { expiresIn: '1h' }
-        );
-        
-        // Construct the frontend dashboard URL with the token
-        const dashboardUrl = `http://localhost:1200/?adminAccessToken=${tempToken}`;
-        
-        res.json({
-            success: true,
-            token: tempToken,
-            redirectUrl: dashboardUrl,
-            message: 'Temporary admin access granted'
+      console.log(`Generating admin access for user ID: ${req.params.id}`);
+      
+      // Fetch user
+      const user = await User.findById(req.params.id);
+      if (!user) {
+        console.log(`User not found: ${req.params.id}`);
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
         });
+      }
+      
+      // Fetch frontendURL from settings
+      const settings = await Setting.findOne().select('frontendURL');
+      let frontendURL = settings?.frontendURL || 'http://localhost:1200';
+      
+      // Ensure frontendURL is a valid URL (basic validation)
+      if (!frontendURL.startsWith('http://') && !frontendURL.startsWith('https://')) {
+        console.warn(`Invalid frontendURL format: ${frontendURL}, using fallback`);
+        frontendURL = 'http://localhost:1200';
+      }
+      
+      // Remove trailing slash for consistency
+      frontendURL = frontendURL.replace(/\/$/, '');
+      
+      // Generate admin access token
+      const tempToken = jwt.sign(
+        { userId: user._id, isAdminAccess: true },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+      
+      // Construct dashboard URL
+      const dashboardUrl = `${frontendURL}/?adminAccessToken=${tempToken}`;
+      
+      res.json({
+        success: true,
+        token: tempToken,
+        redirectUrl: dashboardUrl,
+        message: 'Temporary admin access granted'
+      });
     } catch (err) {
-        console.error('Admin generateAdminAccess error:', err);
-        
-        if (err.name === 'JsonWebTokenError') {
-            return res.status(500).json({ 
-                success: false,
-                message: 'JWT configuration error' 
-            });
-        }
-        
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error generating admin access',
-            error: err.message
+      console.error('Admin generateAdminAccess error:', err);
+      
+      if (err.name === 'JsonWebTokenError') {
+        return res.status(500).json({ 
+          success: false,
+          message: 'JWT configuration error' 
         });
+      }
+      
+      res.status(500).json({ 
+        success: false,
+        message: 'Server error generating admin access',
+        error: err.message
+      });
     }
-};
+  };
 
 export const requestEmailVerification = async (req, res) => {
     try {

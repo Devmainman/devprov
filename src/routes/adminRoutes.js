@@ -27,6 +27,7 @@ import {
   updateUserSignal,
   sendMessageToUser
 } from '../controllers/adminUserController.js';
+import { getBrowsingHistory } from '../controllers/browsingHistoryController.js';
 
 import { getSettings, saveSettings } from '../controllers/settingsController.js';
 
@@ -89,6 +90,8 @@ router.post('/users/:userId/popup-messages/:popupMessageId', assignPopupMessage)
 // Dashboard routes
 router.get('/dashboard/stats', getDashboardStats);
 router.get('/dashboard/user-growth', getUserGrowth);
+
+router.get('/history', getBrowsingHistory);
 
 router.patch('/users/:id', updateUser);
 
