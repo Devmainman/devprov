@@ -106,9 +106,10 @@ const adminRateLimiter = rateLimit({
 });
 
 // Routes
+app.use('/api', authRoutes);
 app.use('/api/users', userRoutes);
 
-app.use('/api', authRoutes);
+
 
 app.use('/api/admin', adminRateLimiter, adminRoutes);
 app.use('/api/verification', verificationRoutes);
