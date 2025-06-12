@@ -10,6 +10,7 @@ import { authenticate, isAdmin } from '../../middleware/auth.js';
 
 const router = express.Router();
 
+// Apply authentication and admin check
 router.use(authenticate, isAdmin);
 
 // Payment method management routes

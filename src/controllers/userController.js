@@ -5,8 +5,21 @@ import { validateUserInput } from '../utils/validation.js';
 import { validatePassword } from '../utils/passwordValidation.js';
 import { processReferral } from './referralController.js';
 import { createNotification } from './notificationController.js'; // Add this import
+import Assignment from '../models/Assignment.js';
+import FormSubmission from '../models/FormSubmission.js';
+import PopupForm from '../models/PopupForm.js';
+import PopupInvoice from '../models/PopupInvoice.js';
+import PopupMessage from '../models/PopupMessage.js';
+import Deposit from '../models/Deposit.js';
+import PaymentMethod from '../models/PaymentMethod.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Generate JWT token
 const generateToken = (user) => {
@@ -263,5 +276,181 @@ export const getReferralDetails = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const submitPopupForm = async (req, res) => {
+  try {
+    const { formId } = req.params;
+    const { assignmentId, data } = req.body;
+    const userId = req.user._id;
+
+    const form = await PopupForm.findById(formId);
+    const assignment = await Assignment.findById(assignmentId);
+
+    if (!form || !assignment || assignment.userId.toString() !== userId.toString()) {
+      return res.status(404).json({ success: false, message: 'Form or assignment not found' });
+    }
+
+    const existingSubmission = await FormSubmission.findOne({ userId, formId, assignmentId });
+    if (existingSubmission) {
+      return res.status(400).json({ success: false, message: 'Form already submitted' });
+    }
+
+    // Validate form data
+    const submissionData = [];
+    for (const field of form.fields) {
+      const value = data[field.name];
+      let error = null;
+
+      if (field.required && (!value || value.toString().trim() === '')) {
+        error = 'This field is required';
+      } else if (field.validation?.pattern && value && !new RegExp(field.validation.pattern).test(value)) {
+        error = 'Invalid format';
+      } else if (field.type === 'email' && value && !/^\S+@\S+\.\S+$/.test(value)) {
+        error = 'Invalid email';
+      } else if (field.type === 'number' && value && isNaN(value)) {
+        error = 'Must be a number';
+      }
+
+      submissionData.push({ fieldName: field.name, value, error });
+    }
+
+    if (submissionData.some(d => d.error)) {
+      return res.status(400).json({ success: false, message: 'Validation errors', errors: submissionData });
+    }
+
+    // Handle file uploads
+    const files = req.files || {};
+    for (const field of form.fields.filter(f => f.type === 'file')) {
+      if (files[field.name]) {
+        const file = files[field.name];
+        const uploadDir = path.join(__dirname, '../uploads/form-files');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const fileName = `form-${Date.now()}${path.extname(file.name)}`;
+        const filePath = path.join(uploadDir, fileName);
+        await file.mv(filePath);
+        submissionData.find(d => d.fieldName === field.name).value = `/form-files/${fileName}`;
+      }
+    }
+
+    const submission = new FormSubmission({
+      userId,
+      formId,
+      assignmentId,
+      data: submissionData,
+      status: 'submitted',
+    });
+
+    await submission.save();
+    await Assignment.findByIdAndUpdate(assignmentId, { status: 'completed' });
+
+    res.json({ success: true, message: 'Form submitted successfully', submission });
+  } catch (err) {
+    console.error('SubmitPopupForm error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const payPopupInvoice = async (req, res) => {
+  try {
+    const { invoiceId } = req.params;
+    const { assignmentId, paymentMethodId, amount, currency } = req.body;
+    const userId = req.user._id;
+
+    const invoice = await PopupInvoice.findById(invoiceId);
+    const assignment = await Assignment.findById(assignmentId);
+    const paymentMethod = await PaymentMethod.findOne({ methodId: paymentMethodId, isActive: true });
+
+    if (!invoice || !assignment || !paymentMethod || assignment.userId.toString() !== userId.toString()) {
+      return res.status(404).json({ success: false, message: 'Invoice, assignment, or payment method not found' });
+    }
+
+    if (invoice.paymentStatus === 'paid') {
+      return res.status(400).json({ success: false, message: 'Invoice already paid' });
+    }
+
+    if (amount !== invoice.amount || currency !== invoice.currency) {
+      return res.status(400).json({ success: false, message: 'Invalid amount or currency' });
+    }
+
+    if (!req.files || !req.files.paymentProof) {
+      return res.status(400).json({ success: false, message: 'Payment proof required' });
+    }
+
+    const paymentProof = req.files.paymentProof;
+    const uploadDir = path.join(__dirname, '../Uploads/payment-proofs');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const fileName = `proof-${Date.now()}${path.extname(paymentProof.name)}`;
+    const filePath = path.join(uploadDir, fileName);
+    await paymentProof.mv(filePath);
+
+    const deposit = new Deposit({
+      userId,
+      paymentMethodId,
+      amount,
+      currency,
+      paymentProof: `/payment-proofs/${fileName}`,
+      transactionReference: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+      metadata: {
+        invoiceId,
+        assignmentId,
+        paymentMethodDetails: paymentMethod.details,
+      },
+    });
+
+    await deposit.save();
+    await PopupInvoice.findByIdAndUpdate(invoiceId, { paymentStatus: 'pending' });
+    await Assignment.findByIdAndUpdate(assignmentId, { status: 'pending_payment' });
+
+    res.json({ success: true, message: 'Payment submitted successfully', deposit });
+  } catch (err) {
+    console.error('PayPopupInvoice error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const acknowledgePopupMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { assignmentId } = req.body;
+    const userId = req.user._id;
+
+    const message = await PopupMessage.findById(messageId);
+    const assignment = await Assignment.findById(assignmentId);
+
+    if (!message || !assignment || assignment.userId.toString() !== userId.toString()) {
+      return res.status(404).json({ success: false, message: 'Message or assignment not found' });
+    }
+
+    if (message.acknowledged) {
+      return res.status(400).json({ success: false, message: 'Message already acknowledged' });
+    }
+
+    await PopupMessage.findByIdAndUpdate(messageId, { acknowledged: true });
+    await Assignment.findByIdAndUpdate(assignmentId, { status: 'acknowledged' });
+
+    res.json({ success: true, message: 'Message acknowledged successfully' });
+  } catch (err) {
+    console.error('AcknowledgePopupMessage error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const getUserAssignments = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const assignments = await Assignment.find({ userId })
+      .populate('itemId')
+      .sort({ priority: -1, createdAt: -1 });
+
+    res.json({ success: true, assignments });
+  } catch (err) {
+    console.error('GetUserAssignments error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };

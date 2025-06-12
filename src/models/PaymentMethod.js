@@ -1,21 +1,20 @@
 import mongoose from 'mongoose';
 
 const paymentMethodSchema = new mongoose.Schema({
-    methodId: {
-        type: String,
-        required: true,
-        
-        unique: true
-        },
-  title: {
-    type: String,
-    required: true
-  },
-  icon: {
+  methodId: {
     type: String,
     required: true,
-    enum: ['Bank Transfer', 'Bitcoin', 'Ethereum', 'USDT', 'Other'],
-    default: 'Other'
+    unique: true,
+    trim: true
+  },
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  icon: {
+    type: String, // Store file path (e.g., '/icons/filename.png')
+    required: false // Optional, as some methods might not have custom icons
   },
   isActive: {
     type: Boolean,

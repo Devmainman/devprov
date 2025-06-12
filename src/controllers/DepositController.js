@@ -4,6 +4,12 @@ import Transaction from '../models/Transaction.js';
 import mongoose from 'mongoose';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export const createDeposit = async (req, res) => {
   const session = await mongoose.startSession();
@@ -194,7 +200,7 @@ export const updateDepositStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;
-    const adminId = req.user.id; // Changed from req.admin.id
+    const adminId = req.user.id;
 
     if (!['approved', 'rejected', 'processing'].includes(status)) {
       await session.abortTransaction();

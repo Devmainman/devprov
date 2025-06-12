@@ -93,6 +93,7 @@ app.use(fileUpload({
   abortOnLimit: true
 }));
 app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
+app.use('/icons', express.static(path.join(__dirname, 'Uploads/icons')));
 
 // Apply trackHistory middleware
 app.use(trackHistory);
@@ -105,8 +106,10 @@ const adminRateLimiter = rateLimit({
 });
 
 // Routes
-app.use('/api', authRoutes);
 app.use('/api/users', userRoutes);
+
+app.use('/api', authRoutes);
+
 app.use('/api/admin', adminRateLimiter, adminRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/trading', tradingRoutes);

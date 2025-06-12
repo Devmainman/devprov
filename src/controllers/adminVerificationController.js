@@ -6,48 +6,60 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper function to get document URLs
 const getDocumentUrls = (fileName, folder) => {
   if (!fileName) return null;
-  return `${process.env.API_BASE_URL || 'http://localhost:5000'}/uploads/${folder}/${fileName}`;
+  const baseUrl = process.env.API_BASE_URL || 'http://localhost:5000';
+  return `${baseUrl}/uploads/${folder}/${fileName}`;
 };
 
-// Get all ID verification submissions
 export const getIdVerifications = async (req, res) => {
   try {
     const users = await User.find({
-      'verification.identityDocuments': {
-        $exists: true,
-        $not: { $size: 0 },
-        $elemMatch: { frontImage: { $exists: true, $ne: null, $ne: '' } }
-      }
+      'verification.identityDocuments': { $exists: true, $ne: [] }
     })
       .select('firstName lastName accountId email verification.identityDocuments verification.identityVerified')
       .lean();
 
+    console.log('Found users with identityDocuments:', users.length); // Debug log
+
     const verifications = users.flatMap(user => {
-      return user.verification.identityDocuments.map(doc => ({
-        userId: user._id,
-        accountId: user.accountId,
-        fullName: `${user.firstName} ${user.lastName}`,
-        email: user.email,
-        idType: doc.type,
+      return (user.verification?.identityDocuments || []).map(doc => ({
+        userId: user._id.toString(),
+        accountId: user.accountId || 'N/A',
+        fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Unknown',
+        email: user.email || 'N/A',
+        idType: doc.type || 'Unknown',
         frontImageUrl: getDocumentUrls(doc.frontImage, 'id_documents'),
         backImageUrl: getDocumentUrls(doc.backImage, 'id_documents'),
-        status: doc.verified ? 'Approved' : (doc.rejected ? 'Rejected' : 'Pending'),
-        submittedDate: doc.uploadedAt || new Date(user.createdAt), // Fallback to createdAt
-        documentId: doc._id,
-        currentStatus: user.verification.identityVerified ? 'Verified' : 'Not Verified'
+        status: doc.verified ? 'Approved' : 
+                doc.rejected ? 'Rejected' : 
+                doc.processing ? 'Processing' : 'Pending',
+        submittedDate: doc.uploadedAt || new Date(),
+        documentId: doc._id.toString(),
+        currentStatus: user.verification?.identityVerified ? 'Verified' : 'Not Verified'
       }));
     });
 
+    // Deduplicate by userId, keeping latest document
+    const uniqueVerifications = Object.values(
+      verifications.reduce((acc, item) => {
+        const key = item.userId;
+        if (!acc[key] || new Date(item.submittedDate) > new Date(acc[key].submittedDate)) {
+          acc[key] = item;
+        }
+        return acc;
+      }, {})
+    );
+
+    console.log('Unique ID verifications:', uniqueVerifications.length); // Debug log
+
     res.json({
       success: true,
-      count: verifications.length,
-      verifications
+      count: uniqueVerifications.length,
+      verifications: uniqueVerifications
     });
   } catch (err) {
-    console.error('Error fetching ID verifications:', err);
+    console.error('Error fetching ID verifications:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch ID verifications'
@@ -55,7 +67,6 @@ export const getIdVerifications = async (req, res) => {
   }
 };
 
-// Update ID verification status
 export const updateIdVerification = async (req, res) => {
   try {
     const { userId, documentId } = req.params;
@@ -65,7 +76,7 @@ export const updateIdVerification = async (req, res) => {
     if (!validActions.includes(action)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid action. Must be one of: approve, reject, delete, revoke, processing'
+        message: 'Invalid action'
       });
     }
 
@@ -84,7 +95,7 @@ export const updateIdVerification = async (req, res) => {
     if (documentIndex === -1) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found for this user'
+        message: 'Document not found'
       });
     }
 
@@ -94,40 +105,42 @@ export const updateIdVerification = async (req, res) => {
       case 'approve':
         document.verified = true;
         document.rejected = false;
-        document.rejectionReason = undefined;
+        document.rejectionReason = null;
+        document.processing = false;
         user.verification.identityVerified = true;
         break;
       case 'reject':
         document.verified = false;
         document.rejected = true;
         document.rejectionReason = rejectionReason || 'Not specified';
+        document.processing = false;
         user.verification.identityVerified = false;
         break;
       case 'delete':
-        // Delete files first
         if (document.frontImage) {
-          const frontPath = path.join(__dirname, `../uploads/id_documents/${document.frontImage}`);
+          const frontPath = path.join(__dirname, '../Uploads/id_documents', document.frontImage);
           if (fs.existsSync(frontPath)) fs.unlinkSync(frontPath);
         }
         if (document.backImage) {
-          const backPath = path.join(__dirname, `../uploads/id_documents/${document.backImage}`);
+          const backPath = path.join(__dirname, '../Uploads/id_documents', document.backImage);
           if (fs.existsSync(backPath)) fs.unlinkSync(backPath);
         }
-        // Remove document from array
         user.verification.identityDocuments.splice(documentIndex, 1);
+        user.verification.identityVerified = user.verification.identityDocuments.some(doc => doc.verified);
         break;
       case 'revoke':
         document.verified = false;
         document.rejected = false;
-        document.rejectionReason = undefined;
-        user.verification.identityVerified = false;
+        document.rejectionReason = null;
+        document.processing = false;
+        user.verification.identityVerified = user.verification.identityDocuments.some(doc => doc.verified);
         break;
       case 'processing':
         document.verified = false;
         document.rejected = false;
-        document.rejectionReason = undefined;
-        user.verification.identityVerified = false;
+        document.rejectionReason = null;
         document.processing = true;
+        user.verification.identityVerified = false;
         break;
     }
 
@@ -139,7 +152,7 @@ export const updateIdVerification = async (req, res) => {
       verificationStatus: user.verification.identityVerified
     });
   } catch (err) {
-    console.error('Error updating ID verification:', err);
+    console.error('Error updating ID verification:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to update ID verification'
@@ -147,31 +160,37 @@ export const updateIdVerification = async (req, res) => {
   }
 };
 
-// Get all address verifications
 export const getAddressVerifications = async (req, res) => {
   try {
     const users = await User.find({
-      'verification.proofOfAddress': {
-        $exists: true,
-        image: { $exists: true, $ne: null, $ne: '' }
-      }
+      'verification.proofOfAddress': { $exists: true }
     })
       .select('firstName lastName accountId email address verification.proofOfAddress verification.addressVerified')
       .lean();
 
-    const verifications = users.map(user => ({
-      userId: user._id,
-      accountId: user.accountId,
-      fullName: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      address: user.address,
-      documentType: user.verification.proofOfAddress.documentType,
-      documentUrl: getDocumentUrls(user.verification.proofOfAddress.image, 'address_proofs'),
-      status: user.verification.proofOfAddress.verified ? 'Approved' :
-              user.verification.proofOfAddress.rejected ? 'Rejected' : 'Pending',
-      submittedDate: user.verification.proofOfAddress.uploadedAt || new Date(user.createdAt), // Fallback
-      currentStatus: user.verification.addressVerified ? 'Verified' : 'Not Verified'
-    }));
+    console.log('Found users with proofOfAddress:', users.length); // Debug log
+
+    const verifications = users
+      .filter(user => user.verification?.proofOfAddress?.image)
+      .map(user => {
+        const proof = user.verification?.proofOfAddress || {};
+        return {
+          userId: user._id.toString(),
+          accountId: user.accountId || 'N/A',
+          fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+          email: user.email || 'N/A',
+          address: user.address || { street: 'N/A', city: 'N/A', country: 'N/A' },
+          documentType: proof.documentType || 'N/A',
+          documentUrl: getDocumentUrls(proof.image, 'address_proofs'),
+          status: proof.verified ? 'Approved' :
+                  proof.rejected ? 'Rejected' :
+                  proof.processing ? 'Processing' : 'Pending',
+          submittedDate: proof.uploadedAt || new Date(),
+          currentStatus: user.verification?.addressVerified ? 'Verified' : 'Not Verified'
+        };
+      });
+
+    console.log('Address verifications:', verifications.length); // Debug log
 
     res.json({
       success: true,
@@ -179,7 +198,7 @@ export const getAddressVerifications = async (req, res) => {
       verifications
     });
   } catch (err) {
-    console.error('Error fetching address verifications:', err);
+    console.error('Error fetching address verifications:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch address verifications'
@@ -187,7 +206,6 @@ export const getAddressVerifications = async (req, res) => {
   }
 };
 
-// Update address verification status
 export const updateAddressVerification = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -197,12 +215,12 @@ export const updateAddressVerification = async (req, res) => {
     if (!validActions.includes(action)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid action. Must be one of: approve, reject, delete, revoke, processing'
+        message: 'Invalid action'
       });
     }
 
     const user = await User.findById(userId);
-    if (!user || !user.verification.proofOfAddress) {
+    if (!user || !user.verification?.proofOfAddress) {
       return res.status(404).json({
         success: false,
         message: 'User or address proof not found'
@@ -215,7 +233,7 @@ export const updateAddressVerification = async (req, res) => {
       case 'approve':
         proof.verified = true;
         proof.rejected = false;
-        proof.rejectionReason = undefined;
+        proof.rejectionReason = null;
         proof.processing = false;
         user.verification.addressVerified = true;
         break;
@@ -227,25 +245,24 @@ export const updateAddressVerification = async (req, res) => {
         user.verification.addressVerified = false;
         break;
       case 'delete':
-        // Delete file
         if (proof.image) {
-          const filePath = path.join(__dirname, `../uploads/address_proofs/${proof.image}`);
+          const filePath = path.join(__dirname, '../Uploads/address_proofs', proof.image);
           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         }
-        // Remove proof
-        user.verification.proofOfAddress = undefined;
+        user.verification.proofOfAddress = null;
+        user.verification.addressVerified = false;
         break;
       case 'revoke':
         proof.verified = false;
         proof.rejected = false;
-        proof.rejectionReason = undefined;
+        proof.rejectionReason = null;
         proof.processing = false;
         user.verification.addressVerified = false;
         break;
       case 'processing':
         proof.verified = false;
         proof.rejected = false;
-        proof.rejectionReason = undefined;
+        proof.rejectionReason = null;
         proof.processing = true;
         user.verification.addressVerified = false;
         break;
@@ -255,11 +272,11 @@ export const updateAddressVerification = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Address verification ${action}d successfully`,
+      message: `Address ${action}d successfully`,
       verificationStatus: user.verification.addressVerified
     });
   } catch (err) {
-    console.error('Error updating address verification:', err);
+    console.error('Error updating address:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to update address verification'
@@ -267,26 +284,29 @@ export const updateAddressVerification = async (req, res) => {
   }
 };
 
-// Get all facial verifications
 export const getFacialVerifications = async (req, res) => {
   try {
     const users = await User.find({
-      'verification.faceImage': { $exists: true, $ne: null, $ne: '' }
+      'verification.faceImage': { $exists: true, $ne: '' }
     })
-      .select('firstName lastName accountId email verification.faceImage verification.faceVerified verification.faceRejected verification.faceSubmittedAt')
+      .select('firstName lastName accountId email verification.faceImage verification.faceVerified verification.faceVerificationStatus')
       .lean();
 
+    console.log('Found users with faceImage:', users.length); // Debug log
+
     const verifications = users.map(user => ({
-      userId: user._id,
-      accountId: user.accountId,
-      fullName: `${user.firstName} ${user.lastName}`,
-      email: user.email,
+      userId: user._id.toString(),
+      accountId: user.accountId || 'N/A',
+      fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+      email: user.email || 'N/A',
       faceImageUrl: getDocumentUrls(user.verification.faceImage, 'face_images'),
-      status: user.verification.faceVerified ? 'Approved' :
-              user.verification.faceRejected ? 'Rejected' : 'Pending',
-      submittedDate: user.verification.faceSubmittedAt || new Date(user.createdAt), // Fallback to createdAt
+      status: user.verification.faceVerified ? 'VERIFIED' :
+              user.verification.faceVerificationStatus === 'REJECTED' ? 'REJECTED' : 'PENDING',
+      submittedDate: new Date(),
       currentStatus: user.verification.faceVerified ? 'Verified' : 'Not Verified'
     }));
+
+    console.log('Facial verifications:', verifications.length); // Debug log
 
     res.json({
       success: true,
@@ -294,7 +314,7 @@ export const getFacialVerifications = async (req, res) => {
       verifications
     });
   } catch (err) {
-    console.error('Error fetching facial verifications:', err);
+    console.error('Error fetching facial verifications:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch facial verifications'
@@ -302,7 +322,6 @@ export const getFacialVerifications = async (req, res) => {
   }
 };
 
-// Update facial verification status
 export const updateFacialVerification = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -312,12 +331,12 @@ export const updateFacialVerification = async (req, res) => {
     if (!validActions.includes(action)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid action. Must be one of: approve, reject, delete, revoke, processing'
+        message: 'Invalid action'
       });
     }
 
     const user = await User.findById(userId);
-    if (!user || !user.verification.faceImage) {
+    if (!user || !user.verification?.faceImage) {
       return res.status(404).json({
         success: false,
         message: 'User or face image not found'
@@ -326,41 +345,46 @@ export const updateFacialVerification = async (req, res) => {
 
     switch (action) {
       case 'approve':
-        user.verification.faceVerified = true;
-        user.verification.faceRejected = false;
-        user.verification.faceRejectionReason = undefined;
-        user.verification.faceProcessing = false;
-        break;
-      case 'reject':
-        user.verification.faceVerified = false;
-        user.verification.faceRejected = true;
-        user.verification.faceRejectionReason = rejectionReason || 'Not specified';
-        user.verification.faceProcessing = false;
-        break;
-      case 'delete':
-        // Delete file
-        if (user.verification.faceImage) {
-          const filePath = path.join(__dirname, `../uploads/face_images/${user.verification.faceImage}`);
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      user.verification.faceVerified = true;
+      user.verification.faceVerificationStatus = 'VERIFIED';
+      user.verification.faceRejectionReason = null;
+      user.verification.faceProcessing = null;
+      break;
+
+    case 'reject':
+      user.verification.faceVerified = false;
+      user.verification.faceVerificationStatus = 'REJECTED';
+      user.verification.faceRejectionReason = rejectionReason;
+      user.verification.faceProcessing = false;
+      break;
+
+    case 'delete':
+      if (user.verification.faceImage) {
+        const filePath = path.join(__dirname, '..', 'Uploads', 'face_images', user.verification.faceImage);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
         }
-        // Remove face image
-        user.verification.faceImage = undefined;
-        user.verification.faceVerified = false;
-        user.verification.faceRejected = false;
-        user.verification.faceRejectionReason = undefined;
-        break;
-      case 'revoke':
-        user.verification.faceVerified = false;
-        user.verification.faceRejected = false;
-        user.verification.faceRejectionReason = undefined;
-        user.verification.faceProcessing = false;
-        break;
-      case 'processing':
-        user.verification.faceVerified = false;
-        user.verification.faceRejected = false;
-        user.verification.faceRejectionReason = undefined;
-        user.verification.faceProcessing = true;
-        break;
+      }
+      user.verification.faceImage = null;
+      user.verification.faceVerified = null;
+      user.verification.faceVerificationStatus = null;
+      user.verification.faceRejectionReason = null;
+      user.verification.faceProcessing = null;
+      break;
+
+    case 'revoke':
+      user.verification.faceVerified = false;
+      user.verification.faceVerificationStatus = null;
+      user.verification.faceRejectionReason = null;
+      user.verification.faceProcessing = null;
+      break;
+
+    case 'processing':
+      user.verification.faceVerified = false;
+      user.verification.faceVerificationStatus = null;
+      user.verification.faceRejectionReason = null;
+      user.verification.faceProcessing = true;
+      break;
     }
 
     await user.save();
@@ -371,7 +395,7 @@ export const updateFacialVerification = async (req, res) => {
       verificationStatus: user.verification.faceVerified
     });
   } catch (err) {
-    console.error('Error updating facial verification:', err);
+    console.error('Error updating facial verification:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to update facial verification'
@@ -379,7 +403,6 @@ export const updateFacialVerification = async (req, res) => {
   }
 };
 
-// Get verification counts for dashboard
 export const getVerificationCounts = async (req, res) => {
   try {
     const [
@@ -392,27 +415,19 @@ export const getVerificationCounts = async (req, res) => {
     ] = await Promise.all([
       User.countDocuments({
         'verification.identityDocuments': {
-          $elemMatch: {
-            verified: false,
-            rejected: { $ne: true },
-            frontImage: { $exists: true, $ne: null, $ne: '' }
-          }
+          $elemMatch: { verified: false, rejected: false, processing: false }
         }
       }),
       User.countDocuments({ 'verification.identityVerified': true }),
       User.countDocuments({
-        'verification.proofOfAddress': {
-          $exists: true,
-          verified: false,
-          rejected: { $ne: true },
-          image: { $exists: true, $ne: null, $ne: '' }
-        }
+        'verification.proofOfAddress': { $exists: true, verified: false, rejected: false, processing: false }
       }),
       User.countDocuments({ 'verification.addressVerified': true }),
       User.countDocuments({
-        'verification.faceImage': { $exists: true, $ne: null, $ne: '' },
+        'verification.faceImage': { $exists: true, $ne: '' },
         'verification.faceVerified': false,
-        'verification.faceRejected': { $ne: true }
+        'verification.faceVerificationStatus': { $ne: 'REJECTED' },
+        'verification.faceProcessing': false
       }),
       User.countDocuments({ 'verification.faceVerified': true })
     ]);
@@ -420,22 +435,13 @@ export const getVerificationCounts = async (req, res) => {
     res.json({
       success: true,
       counts: {
-        idVerifications: {
-          pending: idPending,
-          approved: idApproved
-        },
-        addressVerifications: {
-          pending: addressPending,
-          approved: addressApproved
-        },
-        facialVerifications: {
-          pending: facePending,
-          approved: faceApproved
-        }
+        idVerifications: { pending: idPending, idApproved: approved },
+        addressVerifications: { pending: addressPending, approved: addressApproved },
+        facialVerifications: { pending: facePending, approved: faceApproved }
       }
     });
   } catch (err) {
-    console.error('Error getting verification counts:', err);
+    console.error('Error getting verification counts:', err.message, err.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to get verification counts'

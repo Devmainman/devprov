@@ -1,138 +1,219 @@
+// controllers/assignmentController.js
 import Assignment from '../models/Assignment.js';
 import User from '../models/User.js';
 import PopupForm from '../models/PopupForm.js';
 import PopupInvoice from '../models/PopupInvoice.js';
 import PopupMessage from '../models/PopupMessage.js';
+import nodemailer from 'nodemailer';
+import Setting from '../models/Setting.js';
 
-// Assign item to user
-export const assignToUser = async (req, res) => {
+const sendEmailNotification = async (user, message) => {
   try {
-    const { userId, type } = req.params;
-    const { itemId, notes, dueDate } = req.body;
+    const settings = await Setting.findOne();
+    const transporter = nodemailer.createTransport({
+      host: settings.smtpHost,
+      port: settings.smtpPort,
+      secure: settings.smtpEncryption === 'ssl',
+      auth: {
+        user: settings.smtpUsername,
+        pass: settings.smtpPassword,
+      },
+    });
+    await transporter.sendMail({
+      from: `${settings.smtpMailFromName} <${settings.smtpMailFromAddress}>`,
+      to: user.email,
+      subject: message.title,
+      html: `<p>${message.description}</p>${message.filePath ? `<p><a href="${message.filePath}">View Attachment</a></p>` : ''}`,
+    });
+  } catch (err) {
+    console.error('Email notification error:', err);
+  }
+};
 
-    // Validate user exists
+export const assignPopupForm = async (req, res) => {
+  try {
+    const { userId, formId } = req.params;
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+    const form = await PopupForm.findById(formId);
+    if (!user || !form) {
+      return res.status(404).json({ success: false, message: 'User or form not found' });
     }
-
-    // Validate item exists based on type
-    let item;
-    switch (type) {
-      case 'form':
-        item = await PopupForm.findById(itemId);
-        break;
-      case 'invoice':
-        item = await PopupInvoice.findById(itemId);
-        break;
-      case 'message':
-        item = await PopupMessage.findById(itemId);
-        break;
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid assignment type'
-        });
+    const existingAssignment = await Assignment.findOne({ userId, itemId: formId, type: 'popup_form' });
+    if (existingAssignment) {
+      return res.status(400).json({ success: false, message: 'Form already assigned to this user' });
     }
-
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        message: `${type} item not found`
-      });
-    }
-
-    // Create assignment
+    console.log('AssignPopupForm - req.user:', req.user);
     const assignment = new Assignment({
       userId,
       adminId: req.user.id,
-      type,
-      itemId,
-      notes,
-      dueDate,
-      status: 'pending'
+      type: 'popup_form',
+      itemId: formId,
+      title: form.title,
+      status: 'assigned',
+      blockProgress: true,
+      metadata: {
+        description: form.description,
+        fieldsCount: form.fields.length,
+      },
     });
-
     await assignment.save();
-
-    res.status(201).json({
-      success: true,
-      assignment
-    });
+    res.json({ success: true, message: 'Form assigned successfully', assignment });
   } catch (err) {
-    console.error('Assignment error:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Server error creating assignment'
-    });
+    console.error('AssignPopupForm error:', err);
+    if (err.code === 11000) {
+      res.status(400).json({ success: false, message: 'Form already assigned to this user' });
+    } else {
+      res.status(500).json({ success: false, message: 'Server error' });
+    }
   }
 };
 
-// Get user assignments
+export const assignPopupInvoice = async (req, res) => {
+  try {
+    const { userId, invoiceId } = req.params;
+    console.log('Reached assignPopupInvoice:', req.params);
+    console.log('AssignPopupInvoice - req.user:', req.user);
+    const user = await User.findById(userId);
+    const invoice = await PopupInvoice.findById(invoiceId);
+    if (!user || !invoice) {
+      return res.status(404).json({ success: false, message: 'User or invoice not found' });
+    }
+    const existingAssignment = await Assignment.findOne({ userId, itemId: invoiceId, type: 'popup_invoice' });
+    if (existingAssignment) {
+      return res.status(400).json({ success: false, message: 'Invoice already assigned to this user' });
+    }
+    const assignment = new Assignment({
+      userId,
+      adminId: req.user.id,
+      type: 'popup_invoice',
+      itemId: invoiceId,
+      title: invoice.title,
+      status: 'pending_payment',
+      blockProgress: true,
+      metadata: {
+        amount: invoice.amount,
+        currency: invoice.currency,
+        description: invoice.description,
+      },
+    });
+    await assignment.save();
+    res.json({ success: true, message: 'Invoice assigned successfully', assignment });
+  } catch (err) {
+    console.error('AssignPopupInvoice error:', err);
+    if (err.code === 11000) {
+      res.status(400).json({ success: false, message: 'Invoice already assigned to this user' });
+    } else {
+      res.status(500).json({ success: false, message: 'Server error' });
+    }
+  }
+};
+
+export const assignPopupMessage = async (req, res) => {
+  try {
+    const { userId, messageId } = req.params;
+    const user = await User.findById(userId);
+    const message = await PopupMessage.findById(messageId);
+    if (!user || !message) {
+      return res.status(404).json({ success: false, message: 'User or message not found' });
+    }
+    const existingAssignment = await Assignment.findOne({ userId, itemId: messageId, type: 'popup_message' });
+    if (existingAssignment) {
+      return res.status(400).json({ success: false, message: 'Message already assigned to this user' });
+    }
+    console.log('AssignPopupMessage - req.user:', req.user);
+    const assignment = new Assignment({
+      userId,
+      adminId: req.user.id,
+      type: 'popup_message',
+      itemId: messageId,
+      title: message.title,
+      status: 'assigned',
+      blockProgress: false,
+      metadata: {
+        description: message.description,
+        filePath: message.filePath,
+      },
+    });
+    await assignment.save();
+    if (['email', 'both'].includes(message.notificationType)) {
+      await sendEmailNotification(user, message);
+    }
+    res.json({ success: true, message: 'Message assigned successfully', assignment });
+  } catch (err) {
+    console.error('AssignPopupMessage error:', err);
+    if (err.code === 11000) {
+      res.status(400).json({ success: false, message: 'Message already assigned to this user' });
+    } else {
+      res.status(500).json({ success: false, message: 'Server error' });
+    }
+  }
+};
+
 export const getUserAssignments = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { type, status } = req.query;
-
-    const query = { userId };
-    if (type) query.type = type;
-    if (status) query.status = status;
-
-    const assignments = await Assignment.find(query)
-      .sort({ createdAt: -1 })
-      .populate('itemId', 'title amount description status');
-
-    res.json({
-      success: true,
-      assignments
-    });
+    const assignments = await Assignment.find({ userId })
+      .populate('itemId')
+      .sort({ createdAt: -1 });
+    res.json({ success: true, assignments });
   } catch (err) {
-    console.error('Get assignments error:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Server error fetching assignments'
-    });
+    console.error('GetUserAssignments error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// Update assignment status
 export const updateAssignmentStatus = async (req, res) => {
   try {
     const { assignmentId } = req.params;
     const { status } = req.body;
-
-    if (!['pending', 'completed', 'rejected'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid status value'
-      });
-    }
-
     const assignment = await Assignment.findByIdAndUpdate(
       assignmentId,
       { status },
       { new: true }
     );
-
     if (!assignment) {
-      return res.status(404).json({
-        success: false,
-        message: 'Assignment not found'
-      });
+      return res.status(404).json({ success: false, message: 'Assignment not found' });
     }
-
-    res.json({
-      success: true,
-      assignment
-    });
+    res.json({ success: true, message: 'Assignment status updated', assignment });
   } catch (err) {
-    console.error('Update assignment error:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Server error updating assignment'
-    });
+    console.error('UpdateAssignmentStatus error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// New GET functions for fetching active popup items
+export const getPopupForms = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const query = status ? { status } : { status: 'Active' };
+    const forms = await PopupForm.find(query).sort({ createdAt: -1 });
+    res.json({ success: true, forms });
+  } catch (err) {
+    console.error('GetPopupForms error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const getPopupInvoices = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const query = status ? { status } : { status: 'Active' };
+    const invoices = await PopupInvoice.find(query).sort({ createdAt: -1 });
+    res.json({ success: true, invoices });
+  } catch (err) {
+    console.error('GetPopupInvoices error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const getPopupMessages = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const query = status ? { status } : { status: 'Active' };
+    const messages = await PopupMessage.find(query).sort({ createdAt: -1 });
+    res.json({ success: true, messages });
+  } catch (err) {
+    console.error('GetPopupMessages error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };

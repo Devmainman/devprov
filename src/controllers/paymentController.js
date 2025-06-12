@@ -1,6 +1,7 @@
 import PaymentMethod from '../models/PaymentMethod.js';
 import Deposit from '../models/Deposit.js';
-import User from '../models/User.js';
+import PopupInvoice from '../models/PopupInvoice.js';
+import Assignment from '../models/Assignment.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -41,76 +42,47 @@ export const getPaymentMethods = async (req, res) => {
 // Create a deposit request
 export const createDeposit = async (req, res) => {
   try {
-    console.log('req.user:', req.user);
+    const userId = req.user._id;
+    const { paymentMethodId, amount, currency, invoiceId } = req.body;
 
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'User not authenticated' 
-      });
-    }
-
-    const { paymentMethodId, amount, currency } = req.body;
-    const userId = req.user.id;
-
-    // Validate input
-    if (!paymentMethodId || !amount || !currency) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Missing required fields' 
-      });
-    }
-
-    // Check payment method exists and is active
-    const paymentMethod = await PaymentMethod.findOne({ 
-      methodId: paymentMethodId, 
-      isActive: true 
-    });
-    
+    const paymentMethod = await PaymentMethod.findOne({ methodId: paymentMethodId, isActive: true });
     if (!paymentMethod) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid payment method' 
-      });
+      return res.status(400).json({ success: false, message: 'Invalid payment method' });
     }
 
-    // Validate amount against min/max if set
     if (paymentMethod.minAmount && amount < paymentMethod.minAmount) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Minimum deposit amount is ${paymentMethod.minAmount}` 
-      });
+      return res.status(400).json({ success: false, message: `Minimum deposit amount is ${paymentMethod.minAmount}` });
     }
 
     if (paymentMethod.maxAmount && amount > paymentMethod.maxAmount) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Maximum deposit amount is ${paymentMethod.maxAmount}` 
-      });
+      return res.status(400).json({ success: false, message: `Maximum deposit amount is ${paymentMethod.maxAmount}` });
     }
 
-    // Handle file upload
+    let invoice, assignment;
+    if (invoiceId) {
+      invoice = await PopupInvoice.findById(invoiceId);
+      assignment = await Assignment.findOne({ userId, itemId: invoiceId, type: 'popup_invoice' });
+      if (!invoice || !assignment || invoice.paymentStatus === 'paid') {
+        return res.status(400).json({ success: false, message: 'Invalid or already paid invoice' });
+      }
+      if (amount !== invoice.amount || currency !== invoice.currency) {
+        return res.status(400).json({ success: false, message: 'Invalid amount or currency for invoice' });
+      }
+    }
+
     if (!req.files || !req.files.paymentProof) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Payment proof is required' 
-      });
+      return res.status(400).json({ success: false, message: 'Payment proof is required' });
     }
 
     const paymentProof = req.files.paymentProof;
-    const uploadDir = path.join(__dirname, '../uploads/payment-proofs');
-    
-    // Create directory if it doesn't exist
+    const uploadDir = path.join(__dirname, '../Uploads/payment-proofs');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-
     const fileName = `proof-${Date.now()}${path.extname(paymentProof.name)}`;
     const filePath = path.join(uploadDir, fileName);
-
     await paymentProof.mv(filePath);
 
-    // Create deposit record
     const deposit = new Deposit({
       userId,
       paymentMethodId,
@@ -119,37 +91,23 @@ export const createDeposit = async (req, res) => {
       paymentProof: `/payment-proofs/${fileName}`,
       transactionReference: `DEP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       metadata: {
-        paymentMethodDetails: paymentMethod.details
-      }
+        paymentMethodDetails: paymentMethod.details,
+        invoiceId,
+        assignmentId: assignment?._id,
+      },
     });
 
     await deposit.save();
 
-    // In a real application, you might want to:
-    // 1. Notify admin about new deposit
-    // 2. Send confirmation email to user
-    // 3. Initiate any automatic verification processes
+    if (invoice) {
+      await PopupInvoice.findByIdAndUpdate(invoiceId, { paymentStatus: 'pending' });
+      await Assignment.findByIdAndUpdate(assignment._id, { status: 'pending_payment' });
+    }
 
-    res.status(201).json({ 
-      success: true, 
-      message: 'Deposit request submitted successfully',
-      data: {
-        depositId: deposit._id,
-        reference: deposit.transactionReference,
-        status: deposit.status,
-        paymentMethod: paymentMethod.title,
-        amount,
-        currency
-      }
-    });
-
+    res.status(201).json({ success: true, message: 'Deposit request submitted successfully', deposit });
   } catch (err) {
     console.error('Deposit creation error:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to create deposit',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

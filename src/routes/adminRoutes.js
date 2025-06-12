@@ -12,9 +12,6 @@ import {
   toggleUserStatus,
   updateWalletBalance,
   assignPackage,
-  assignPopupForm,
-  assignPopupInvoice,
-  assignPopupMessage,
   resetUserPassword,
   toggleWithdrawalLock,
   generateAdminAccess,
@@ -25,17 +22,27 @@ import {
   assignBotToUser,
   toggleTradeStatus,
   updateUserSignal,
-  sendMessageToUser
+  sendMessageToUser,
 } from '../controllers/adminUserController.js';
 import { getBrowsingHistory } from '../controllers/browsingHistoryController.js';
+import { 
+  assignPopupForm, 
+  assignPopupInvoice, 
+  assignPopupMessage,
+  getUserAssignments,
+  updateAssignmentStatus,
+  getPopupForms,
+  getPopupInvoices,
+  getPopupMessages,
+} from '../controllers/assignmentController.js';
 
 import { getSettings, saveSettings } from '../controllers/settingsController.js';
 
-import {
-  assignToUser,
-  getUserAssignments,
-  updateAssignmentStatus
-} from '../controllers/assignmentController.js';
+// import {
+//   assignToUser,
+//   getUserAssignments,
+//   updateAssignmentStatus
+// } from '../controllers/assignmentController.js';
 import {
   getDashboardStats,
   getUserGrowth
@@ -65,27 +72,43 @@ router.patch('/users/:id/wallet', updateWalletBalance);
 router.get('/settings', authenticate, isAdmin, getSettings);
 router.post('/settings', authenticate, isAdmin, saveSettings);
 
+// Popup routes
+router.get('/popup-forms', getPopupForms);
+router.get('/popup-invoices', getPopupInvoices);
+router.get('/popup-messages', getPopupMessages);
+
 // User action routes
-router.patch('/users/:id/withdrawal-lock', toggleWithdrawalLock);
-router.post('/users/:id/admin-access', generateAdminAccess);
-router.post('/users/:id/request-email-verification', requestEmailVerification);
-router.post('/users/:id/request-phone-verification', requestPhoneVerification);
-router.patch('/users/:id/currency', changeUserCurrency);
-router.delete('/users/:id/account', deleteUserAccount);
-router.post('/users/:id/assign-bot', assignBotToUser);
-router.patch('/users/:id/trade-status', toggleTradeStatus);
-router.patch('/users/:id/signal', updateUserSignal);
-router.post('/users/:id/send-message', sendMessageToUser);
+router.patch('/users/:userId/packages/:packageId', assignPackage);
+router.post('/users/:userId/reset-password', resetUserPassword);
+router.patch('/users/:userId/withdrawal-lock', toggleWithdrawalLock);
+router.post('/users/:userId/admin-access', generateAdminAccess);
+router.post('/users/:userId/request-email-verification', requestEmailVerification);
+router.post('/users/:userId/request-phone-verification', requestPhoneVerification);
+router.patch('/users/:userId/currency', changeUserCurrency);
+router.delete('/users/:userId/account', deleteUserAccount);
+router.post('/users/:userId/assign-bot', assignBotToUser);
+router.patch('/users/:userId/trade-status', toggleTradeStatus);
+router.patch('/users/:userId/signal', updateUserSignal);
+router.post('/users/:userId/send-message', sendMessageToUser);
 
 // Assignment routes
-router.post('/users/:userId/packages/:packageId', assignPackage);
-router.post('/users/:id/reset-password', resetUserPassword);
-router.post('/users/:userId/popup-forms/:popupFormId', assignPopupForm);
-router.post('/users/:userId/popup-invoices/:popupInvoiceId', assignPopupInvoice);
-router.post('/users/:userId/popup-messages/:popupMessageId', assignPopupMessage);
-// router.post('/assign/:userId/:type', assignToUser);
-// router.get('/assignments/:userId', getUserAssignments);
-// router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
+router.post('/assign/:userId/popup-form/:formId', assignPopupForm);
+router.post('/assign/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
+router.post('/assign/:userId/popup-message/:messageId', assignPopupMessage);
+router.get('/assignments/:userId', getUserAssignments);
+router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
+
+
+// Assign items
+router.post('/assign/:userId/popup-form/:formId', assignPopupForm);
+router.post('/assign/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
+router.post('/assign/:userId/popup-message/:messageId', assignPopupMessage);
+
+// Get user assignments
+router.get('/assignments/:userId', getUserAssignments);
+
+// Update assignment status
+router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
 
 // Dashboard routes
 router.get('/dashboard/stats', getDashboardStats);

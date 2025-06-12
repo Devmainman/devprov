@@ -1,44 +1,53 @@
-// models/Assignment.js
 import mongoose from 'mongoose';
 
 const assignmentSchema = new mongoose.Schema({
-  userId: { 
-    type: mongoose.Schema.Types.ObjectId, 
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true 
+    required: true,
   },
   adminId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Admin',
-    required: true
+    ref: 'User',
+    required: true,
   },
   type: {
     type: String,
-    enum: ['popup_message', 'popup_form', 'popup_invoice', 'package'],
-    required: true
+    enum: ['popup_form', 'popup_invoice', 'popup_message'],
+    required: true,
   },
   itemId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true
-  },
-  status: {
-    type: String,
-    enum: ['assigned', 'completed', 'pending_payment', 'expired', 'disabled'],
-    default: 'assigned'
+    required: true,
+    refPath: 'type',
   },
   title: {
     type: String,
-    required: true
+    required: true,
   },
-  description: String,
-  metadata: mongoose.Schema.Types.Mixed,
-  notes: String,
-  dueDate: Date
-}, { 
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
+  status: {
+    type: String,
+    enum: ['assigned', 'completed', 'pending_payment', 'acknowledged'],
+    default: 'assigned',
+  },
+  dueDate: {
+    type: Date,
+    default: () => Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high'],
+    default: 'medium',
+  },
+  blockProgress: {
+    type: Boolean,
+    default: true,
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+}, { timestamps: true });
 
 // Virtuals for populating the actual item
 assignmentSchema.virtual('popupMessage', {
@@ -68,5 +77,7 @@ assignmentSchema.virtual('user', {
   foreignField: '_id',
   justOne: true
 });
+
+assignmentSchema.index({ userId: 1, type: 1, status: 1 });
 
 export default mongoose.model('Assignment', assignmentSchema);

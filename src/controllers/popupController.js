@@ -15,9 +15,7 @@ export const getActivePopup = async (req, res) => {
       status: 'assigned',
       completed: { $ne: true }
     }).sort({ createdAt: 1 });
-    
-    console.log('Found assignment:', assignment);
-    
+
     if (!assignment) {
       console.log('No active popups found');
       return res.status(404).json({ 

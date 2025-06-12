@@ -6,7 +6,7 @@ const fieldSchema = new mongoose.Schema({
   type: { 
     type: String, 
     required: true, 
-    enum: ['text', 'textarea', 'select', 'checkbox', 'radio', 'number', 'file', 'email', 'date'] 
+    enum: ['text', 'input', 'textarea', 'select', 'checkbox', 'radio', 'number', 'file', 'email', 'date'] 
   },
   required: { type: Boolean, default: false },
   readonly: { type: Boolean, default: false },
@@ -34,7 +34,7 @@ const popupFormSchema = new mongoose.Schema({
     enum: ['Active', 'Inactive', 'Draft'], 
     default: 'Draft' 
   },
-  fields: [fieldSchema],
+  fields: { type: [fieldSchema], default: [] },
   submitText: { type: String, default: 'Submit' },
   successMessage: String,
   createdAt: { type: Date, default: Date.now },
