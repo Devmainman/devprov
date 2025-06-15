@@ -42,7 +42,17 @@ export const getPaymentMethods = async (req, res) => {
 // Create a deposit request
 export const createDeposit = async (req, res) => {
   try {
-    const userId = req.user._id;
+
+    const userId = req.user.id;
+
+    if (!userId) {
+      console.error('User ID missing:', req.user);
+      return res.status(401).json({ 
+        success: false, 
+        message: 'User authentication failed' 
+      });
+    }
+    
     const { paymentMethodId, amount, currency, invoiceId } = req.body;
 
     const paymentMethod = await PaymentMethod.findOne({ methodId: paymentMethodId, isActive: true });
@@ -99,6 +109,20 @@ export const createDeposit = async (req, res) => {
 
     await deposit.save();
 
+    const transaction = new Transaction({
+      userId,
+      amount,
+      type: 'deposit',
+      status: 'pending', // Matches deposit status
+      currency,
+      reference: deposit.transactionReference,
+      metadata: {
+        depositId: deposit._id,
+        paymentMethodId
+      }
+    });
+    await transaction.save();
+
     if (invoice) {
       await PopupInvoice.findByIdAndUpdate(invoiceId, { paymentStatus: 'pending' });
       await Assignment.findByIdAndUpdate(assignment._id, { status: 'pending_payment' });
@@ -107,6 +131,15 @@ export const createDeposit = async (req, res) => {
     res.status(201).json({ success: true, message: 'Deposit request submitted successfully', deposit });
   } catch (err) {
     console.error('Deposit creation error:', err);
+
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({
+        success: false,
+        message: `Validation error: ${messages.join(', ')}`
+      });
+    }
+
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -117,7 +150,7 @@ export const getDepositHistory = async (req, res) => {
     const { page = 1, limit = 10, status } = req.query;
     const skip = (page - 1) * limit;
 
-    const query = { userId: req.user._id };
+    const query = { userId: req.user.id };
     if (status) query.status = status;
 
     const [deposits, total] = await Promise.all([

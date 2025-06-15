@@ -1,10 +1,57 @@
 // routes/userRoutes.js
 import express from 'express';
+import multer from 'multer';
+import bodyParser from 'body-parser';
 import { authenticate } from '../middleware/auth.js';
-import { signup, login, getCurrentUser, changePassword, submitPopupForm, payPopupInvoice, acknowledgePopupMessage, getUserAssignments } from '../controllers/userController.js';
-import { getActivePopup, completePopup, getAvailablePopupForms, getAvailablePopupInvoices, getAvailablePopupMessages } from '../controllers/popupController.js';
+import { signup, login, getCurrentUser, changePassword, submitPopupForm, payPopupInvoice, getUserAssignments } from '../controllers/userController.js';
+import { getActivePopup, completePopup, getAvailablePopupForms, getAvailablePopupInvoices, acknowledgePopupMessage, getAvailablePopupMessages } from '../controllers/popupController.js';
 
 const router = express.Router();
+
+
+// Create a custom form parser
+const parseFormData = (req, res, next) => {
+  // Check if we should expect multipart data
+  const isMultipart = req.headers['content-type']?.includes('multipart/form-data');
+  
+  if (!isMultipart) {
+    // Handle JSON directly
+    return bodyParser.json()(req, res, next);
+  }
+
+  // Configure multer
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+      fields: 100,
+      files: 10
+    }
+  }).any(); // Accept any files
+
+  // Parse with multer
+  upload(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err);
+      // Try to parse as JSON instead
+      req.files = [];
+      return bodyParser.json()(req, res, (jsonErr) => {
+        if (jsonErr) {
+          console.error('JSON parse error:', jsonErr);
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Invalid request format' 
+          });
+        }
+        next();
+      });
+    }
+    next();
+  });
+};
+
+
+
 
 // User authentication routes
 router.post('/signup', signup);
@@ -13,29 +60,44 @@ router.get('/me', authenticate, getCurrentUser);
 router.post('/change-password', authenticate, changePassword);
 
 // Popup routes
-router.get('/popups/active',
-    (req, res, next) => {
-      console.log('Entering /popups/active');
-      next();
-    },
-    authenticate,
-    (req, res, next) => {
-      console.log('After authenticate:', req.user);
-      next();
-    },
-    getActivePopup
-  );; // Ensure only authenticate
+router.get('/popups/active', authenticate, getActivePopup);
 router.post('/popups/:id/complete', authenticate, completePopup);
-router.post('/popups/forms/:id/submit', authenticate, submitPopupForm);
-router.post('/popups/invoices/:id/pay', authenticate, payPopupInvoice);
-router.patch('/popups/messages/:id/acknowledge', authenticate, acknowledgePopupMessage);
 
-router.post('/popup-forms/:formId/submit', authenticate, submitPopupForm);
-router.post('/popup-invoices/:invoiceId/pay', authenticate, payPopupInvoice);
-router.post('/popup-messages/:messageId/acknowledge', authenticate, acknowledgePopupMessage);
+// Form submission route with enhanced parsing
+router.post(
+  '/popup-forms/:formId/submit',
+  authenticate,
+  parseFormData,
+  (req, res, next) => {
+    // Debug middleware
+    console.log('Received submission:', {
+      params: req.params,
+      body: req.body,
+      files: req.files?.map(f => ({
+        fieldname: f.fieldname,
+        originalname: f.originalname,
+        size: f.size
+      })),
+      user: req.user
+    });
+
+    // Ensure assignmentId exists
+    if (!req.body.assignmentId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing assignment ID' 
+      });
+    }
+
+    next();
+  },
+  submitPopupForm
+);
+
+// Other routes remain unchanged
+router.post('/popup-invoices/:invoiceId/pay', authenticate, payPopupInvoice); 
+router.post('/popup-messages/:assignmentId/acknowledge', authenticate, acknowledgePopupMessage);
 router.get('/assignments', authenticate, getUserAssignments);
-
-// Available popups
 router.get('/popups/available/forms', authenticate, getAvailablePopupForms);
 router.get('/popups/available/invoices', authenticate, getAvailablePopupInvoices);
 router.get('/popups/available/messages', authenticate, getAvailablePopupMessages);

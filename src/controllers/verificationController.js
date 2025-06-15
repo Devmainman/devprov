@@ -52,6 +52,29 @@ const saveFile = async (file, folder) => {
   return fileName;
 };
 
+export const getVerificationStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .select('verification faceImage');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({
+      identityVerified: user.verification?.identityVerified || false,
+      identityDocumentsExist: !!user.verification?.identityDocuments?.length,
+      addressVerified: user.verification?.addressVerified || false,
+      addressProofExist: !!user.verification?.proofOfAddress?.image,
+      faceVerified: user.verification?.faceVerified || false,
+      faceImage: user.verification?.faceImage || null
+    });
+  } catch (err) {
+    console.error('Error getting verification status:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export const completeProfile = async (req, res) => {
   try {
     console.log('Incoming request user:', req.user); // Debug log

@@ -21,6 +21,10 @@ const assignmentSchema = new mongoose.Schema({
     required: true,
     refPath: 'type',
   },
+  referenceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null,
+  },
   title: {
     type: String,
     required: true,
@@ -29,6 +33,10 @@ const assignmentSchema = new mongoose.Schema({
     type: String,
     enum: ['assigned', 'completed', 'pending_payment', 'acknowledged'],
     default: 'assigned',
+  },
+  completed: {
+    type: Boolean,
+    default: false,
   },
   dueDate: {
     type: Date,

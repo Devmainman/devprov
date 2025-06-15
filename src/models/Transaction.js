@@ -5,7 +5,13 @@ const transactionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true
+    index: true,
+    set: (value) => {
+      if (typeof value === 'string') {
+        return new mongoose.Types.ObjectId(value);
+      }
+      return value;
+    }
   },
   amount: {
     type: Number,
@@ -18,7 +24,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['deposit', 'withdrawal', 'transfer', 'trade'],
+    enum: ['deposit', 'withdrawal', 'transfer', 'trade', 'admin_credit', 'admin_debit'],
     required: true
   },
   status: {

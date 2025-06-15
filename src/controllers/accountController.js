@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Transaction from '../models/Transaction.js';
 
@@ -5,6 +6,7 @@ import Transaction from '../models/Transaction.js';
 export const getBalance = async (req, res) => {
   try {
     // Get user with balance information
+
     const user = await User.findById(req.user.id)
       .select('accountId currency verification balance')
       .lean();
@@ -15,13 +17,17 @@ export const getBalance = async (req, res) => {
         message: 'User not found'
       });
     }
+    
+    const userId = req.user.id;
+    const oneHourAgo = new Date(Date.now() - 3600000);
 
     // Calculate balance from transactions (more accurate method)
     const balanceResult = await Transaction.aggregate([
       { 
         $match: { 
-          userId: req.user._id, 
-          status: 'completed' 
+          userId: userId,
+          status: {$in: ['completed', 'pending']},
+          
         } 
       },
       {
@@ -51,11 +57,11 @@ export const getBalance = async (req, res) => {
     }
 
     // Calculate hourly change
-    const oneHourAgo = new Date(Date.now() - 3600000);
+    
     const previousBalanceResult = await Transaction.aggregate([
       { 
         $match: { 
-          userId: req.user._id, 
+          userId: userId,
           status: 'completed',
           createdAt: { $lt: oneHourAgo }
         } 
@@ -98,7 +104,13 @@ export const getBalance = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Balance calculation error:', err);
+    console.error('Balance calculation error:', {
+      message: err.message,
+      stack: err.stack,
+      userId: req.user?.id,
+      query: req.query
+    });
+    
     res.status(500).json({
       success: false,
       message: 'Failed to calculate balance',
@@ -112,7 +124,10 @@ export const getTransactions = async (req, res) => {
     const { page = 1, limit = 10, search = '' } = req.query;
     const skip = (page - 1) * limit;
 
-    const query = { userId: req.user.id };
+    // Convert to ObjectId
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    
+    const query = { userId };
     
     if (search) {
       query.$or = [
@@ -132,24 +147,33 @@ export const getTransactions = async (req, res) => {
       Transaction.countDocuments(query)
     ]);
 
+    // Convert ObjectIds to strings
+    const formattedTransactions = transactions.map(t => ({
+      ...t,
+      id: t._id.toString(),
+      userId: t.userId.toString(),
+      createdAt: t.createdAt.toISOString()
+    }));
+
     res.json({
       success: true,
       data: {
-        transactions: transactions.map(t => ({
-          ...t,
-          createdAt: t.createdAt.toISOString()
-        })),
+        transactions: formattedTransactions,
         pagination: {
           total,
           pages: Math.ceil(total / limit),
-          currentPage: page,
-          limit
+          currentPage: parseInt(page),
+          limit: parseInt(limit)
         }
       }
     });
 
   } catch (err) {
-    console.error('Transactions fetch error:', err);
+    console.error('Transactions fetch error:', {
+      error: err.message,
+      userId: req.user.id,
+      query: req.query
+    });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch transactions'
@@ -158,55 +182,54 @@ export const getTransactions = async (req, res) => {
 };
 
 export const createDeposit = async (req, res) => {
-    try {
-      const { amount, bankName, accountNumber, reference } = req.body;
-      const userId = req.user._id;
-  
-      // Validate input
-      if (!amount || amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'A valid deposit amount is required'
-        });
-      }
-  
-      // Create deposit transaction
-      const deposit = new Transaction({
-        userId,
-        amount,
-        type: 'deposit',
-        status: 'completed',
-        bankName,
-        accountNumber,
-        reference: reference || `DEP-${Date.now()}`,
-        currency: 'NGN'
-      });
-  
-      await deposit.save();
-  
-      // Update user's balance field
-      await User.findByIdAndUpdate(userId, {
-        $inc: { balance: amount }
-      });
-  
-      // Get updated balance
-      const updatedUser = await User.findById(userId).select('balance');
-  
-      res.status(201).json({
-        success: true,
-        message: 'Deposit successful',
-        data: {
-          newBalance: updatedUser.balance,
-          reference: deposit.reference
-        }
-      });
-  
-    } catch (err) {
-      console.error('Deposit error:', err);
-      res.status(500).json({
+  try {
+    const { amount, bankName, accountNumber, reference } = req.body;
+    const userId = req.user.id; // Changed from _id to id
+
+    // Validate input
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to process deposit',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message: 'A valid deposit amount is required'
       });
     }
-  };
+
+    // Create deposit transaction
+    const deposit = new Transaction({
+      userId: new mongoose.Types.ObjectId(userId), // Ensure proper ID format
+      amount,
+      type: 'deposit',
+      status: 'completed',
+      bankName,
+      accountNumber,
+      reference: reference || `DEP-${Date.now()}`,
+      currency: 'NGN'
+    });
+
+    await deposit.save();
+
+    // Update user's balance field
+    await User.findByIdAndUpdate(userId, {
+      $inc: { balance: amount }
+    });
+
+    // Get updated balance
+    const updatedUser = await User.findById(userId).select('balance');
+
+    res.status(201).json({
+      success: true,
+      message: 'Deposit successful',
+      data: {
+        newBalance: updatedUser.balance,
+        reference: deposit.reference
+      }
+    });
+  } catch (err) {
+    console.error('Deposit error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process deposit',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};

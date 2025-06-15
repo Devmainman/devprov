@@ -100,11 +100,6 @@ const userSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Balance cannot be negative']
   },
-  walletBalance: { 
-    type: Number, 
-    default: 0, 
-    min: [0, 'Wallet balance cannot be negative'] 
-  },
   accountType: { 
     type: String, 
     enum: ['Basic', 'Premium', 'VIP'], 

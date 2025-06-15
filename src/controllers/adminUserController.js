@@ -1,9 +1,7 @@
 import User from '../models/User.js';
+import Transaction from '../models/Transaction.js';
 import Assignment from '../models/Assignment.js';
 import Package from '../models/Package.js';
-import PopupForm from '../models/PopupForm.js';
-import PopupInvoice from '../models/PopupInvoice.js';
-import PopupMessage from '../models/PopupMessage.js';
 import Setting from '../models/Setting.js';
 import jwt from 'jsonwebtoken';
 
@@ -34,7 +32,7 @@ const transformUserForFrontend = (user) => {
         country: user.country || user.address?.country || 'Not set',
         currency: user.currency || 'USD',
         accountType: user.accountType || 'Basic',
-        walletBalance: typeof user.walletBalance === 'number' ? user.walletBalance : 0,
+        walletBalance: typeof user.balance === 'number' ? user.balance : 0,
         status: user.status || 'Active',
         joinedDate: user.joinedDate,
         firstName: user.firstName,
@@ -280,64 +278,69 @@ export const toggleUserStatus = async (req, res) => {
 
 export const updateWalletBalance = async (req, res) => {
     try {
-        const { id } = req.params;
-        const { amount, type, notes } = req.body;
-        
-        if (!amount || isNaN(amount)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Valid amount is required'
-            });
-        }
-        
-        const user = await User.findById(id);
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        if (type === 'credit') {
-            user.walletBalance += parseFloat(amount);
-        } else {
-            if (user.walletBalance < amount) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Insufficient funds'
-                });
-            }
-            user.walletBalance -= parseFloat(amount);
-        }
-        
-        user.transactions = user.transactions || [];
-        user.transactions.push({
-            amount: Math.abs(amount),
-            currency: user.currency,
-            type: type === 'credit' ? 'deposit' : 'withdrawal',
-            status: 'completed',
-            reference: `ADJ-${Date.now()}`,
-            metadata: {
-                adminAction: true,
-                notes
-            }
+      const { id } = req.params;
+      const { amount, type, notes } = req.body;
+      
+      const parsedAmount = parseFloat(amount);
+      if (isNaN(parsedAmount)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid numeric amount is required'
         });
-        
-        await user.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user)
+      }
+  
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
         });
-    } catch (err) {
-        console.error('Admin updateWalletBalance error:', err);
-        res.status(500).json({ 
+      }
+  
+      // Use new transaction types
+      const transactionType = type === 'credit' ? 'admin_credit' : 'admin_debit';
+  
+      const transaction = new Transaction({
+        userId: user._id,
+        amount: parsedAmount,
+        currency: user.currency,
+        type: transactionType,
+        status: 'completed',
+        reference: `ADJ-${Date.now()}`,
+        description: notes || `${type} adjustment by admin`
+      });
+  
+      // Update balance
+      if (type === 'credit') {
+        user.balance += parsedAmount;
+      } else {
+        if (user.balance < parsedAmount) {
+          return res.status(400).json({
             success: false,
-            message: 'Server error updating wallet balance' 
-        });
+            message: 'Insufficient funds'
+          });
+        }
+        user.balance -= parsedAmount;
+      }
+  
+      // Save both user and transaction
+      await Promise.all([user.save(), transaction.save()]);
+      
+      res.json({
+        success: true,
+        user: transformUserForFrontend(user),
+        newBalance: user.walletBalance
+      });
+    } catch (err) {
+      console.error('Admin updateWalletBalance error:', err);
+      res.status(500).json({ 
+        success: false,
+        message: 'Server error updating wallet balance',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
     }
-};
+  };
+  
 
 export const assignPackage = async (req, res) => {
     try {
@@ -376,170 +379,6 @@ export const assignPackage = async (req, res) => {
         res.status(500).json({ 
             success: false,
             message: 'Server error assigning package' 
-        });
-    }
-};
-
-export const assignPopupForm = async (req, res) => {
-    try {
-        const { userId, popupFormId } = req.params;
-        
-        const user = await User.findById(userId);
-        const popupForm = await PopupForm.findById(popupFormId);
-        
-        if (!user || !popupForm) {
-            return res.status(404).json({
-                success: false,
-                message: 'User or popup form not found'
-            });
-        }
-        
-        const assignment = new Assignment({
-            userId: user._id,
-            adminId: req.user.id,
-            type: 'popup_form',
-            itemId: popupForm._id,
-            title: popupForm.title,
-            status: 'assigned',
-            metadata: {
-                title: popupForm.title,
-                description: popupForm.description,
-                fieldsCount: popupForm.fields.length
-            }
-        });
-        
-        await assignment.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user),
-            assignment
-        });
-    } catch (err) {
-        console.error('Admin assignPopupForm error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error assigning popup form' 
-        });
-    }
-};
-
-export const assignPopupInvoice = async (req, res) => {
-    try {
-        const { userId, popupInvoiceId } = req.params;
-        
-        const user = await User.findById(userId);
-        const popupInvoice = await PopupInvoice.findById(popupInvoiceId);
-        
-        if (!user || !popupInvoice) {
-            return res.status(404).json({
-                success: false,
-                message: 'User or popup invoice not found'
-            });
-        }
-        
-        const assignment = new Assignment({
-            userId: user._id,
-            adminId: req.user.id,
-            type: 'popup_invoice',
-            itemId: popupInvoice._id,
-            status: 'pending_payment',
-            title: popupInvoice.title,
-            metadata: {
-                title: popupInvoice.title,
-                amount: popupInvoice.amount,
-                currency: popupInvoice.currency,
-                description: popupInvoice.description,
-                assignedTo: popupInvoice.assignedTo,
-                paymentstatus: 'Unpaid'
-            }
-        });
-        
-        await assignment.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user),
-            assignment
-        });
-    } catch (err) {
-        console.error('Admin assignPopupInvoice error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error assigning popup invoice' 
-        });
-    }
-};
-
-export const assignPopupMessage = async (req, res) => {
-    try {
-        const { userId, popupMessageId } = req.params;
-        
-        const user = await User.findById(userId);
-        const popupMessage = await PopupMessage.findById(popupMessageId);
-        
-        if (!user || !popupMessage) {
-            return res.status(404).json({
-                success: false,
-                message: 'User or popup message not found'
-            });
-        }
-        
-        const existingAssignment = await Assignment.findOne({
-            userId: user._id,
-            itemId: popupMessage._id,
-            type: 'popup_message'
-        });
-        
-        if (existingAssignment) {
-            return res.status(400).json({
-                success: false,
-                message: 'This popup message is already assigned to the user'
-            });
-        }
-        
-        const assignment = new Assignment({
-            userId: user._id,
-            adminId: req.user.id,
-            type: 'popup_message',
-            itemId: popupMessage._id,
-            title: popupMessage.title,
-            status: 'assigned',
-            metadata: {
-                title: popupMessage.title,
-                description: popupMessage.description,
-                hasAttachment: !!popupMessage.filePath,
-                filePath: popupMessage.filePath
-            }
-        });
-        
-        await assignment.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user),
-            assignment
-        });
-    } catch (err) {
-        console.error('Admin assignPopupMessage error:', err);
-        
-        if (err.name === 'ValidationError') {
-            const errors = {};
-            Object.keys(err.errors).forEach(key => {
-                errors[key] = err.errors[key].message;
-            });
-            
-            return res.status(400).json({ 
-                success: false,
-                message: 'Validation error',
-                errors
-            });
-        }
-        
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error assigning popup message',
-            error: err.message
         });
     }
 };
@@ -608,12 +447,12 @@ export const toggleWithdrawalLock = async (req, res) => {
 
 export const generateAdminAccess = async (req, res) => {
     try {
-      console.log(`Generating admin access for user ID: ${req.params.id}`);
+        const { id } = req.params; // Changed from req.params.id to req.params.id
+        console.log(`Generating admin access for user ID: ${id}`);
       
       // Fetch user
-      const user = await User.findById(req.params.id);
+      const user = await User.findById(id);
       if (!user) {
-        console.log(`User not found: ${req.params.id}`);
         return res.status(404).json({
           success: false,
           message: 'User not found'
@@ -904,31 +743,31 @@ export const assignBotToUser = async (req, res) => {
 
 export const toggleTradeStatus = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        user.tradingEnabled = !user.tradingEnabled;
-        await user.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user),
-            message: `Trading ${user.tradingEnabled ? 'enabled' : 'disabled'} successfully`
+      const user = await User.findById(req.params.id);
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
         });
+      }
+      
+      user.tradingEnabled = !user.tradingEnabled;
+      await user.save();
+      
+      res.json({
+        success: true,
+        user: transformUserForFrontend(user),
+        message: `Trading ${user.tradingEnabled ? 'enabled' : 'disabled'} successfully`
+      });
     } catch (err) {
-        console.error('Admin toggleTradeStatus error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error toggling trade status' 
-        });
+      console.error('Admin toggleTradeStatus error:', err);
+      res.status(500).json({ 
+        success: false,
+        message: 'Server error toggling trade status' 
+      });
     }
-};
+  };
 
 export const updateUserSignal = async (req, res) => {
     try {

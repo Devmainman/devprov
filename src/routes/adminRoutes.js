@@ -78,18 +78,18 @@ router.get('/popup-invoices', getPopupInvoices);
 router.get('/popup-messages', getPopupMessages);
 
 // User action routes
-router.patch('/users/:userId/packages/:packageId', assignPackage);
-router.post('/users/:userId/reset-password', resetUserPassword);
-router.patch('/users/:userId/withdrawal-lock', toggleWithdrawalLock);
-router.post('/users/:userId/admin-access', generateAdminAccess);
-router.post('/users/:userId/request-email-verification', requestEmailVerification);
-router.post('/users/:userId/request-phone-verification', requestPhoneVerification);
-router.patch('/users/:userId/currency', changeUserCurrency);
-router.delete('/users/:userId/account', deleteUserAccount);
-router.post('/users/:userId/assign-bot', assignBotToUser);
-router.patch('/users/:userId/trade-status', toggleTradeStatus);
-router.patch('/users/:userId/signal', updateUserSignal);
-router.post('/users/:userId/send-message', sendMessageToUser);
+router.post('/users/:id/packages/:packageId', assignPackage);
+router.post('/users/:id/reset-password', resetUserPassword);
+router.patch('/users/:id/withdrawal-lock', toggleWithdrawalLock);
+router.post('/users/:id/admin-access', generateAdminAccess);
+router.post('/users/:id/request-email-verification', requestEmailVerification);
+router.post('/users/:id/request-phone-verification', requestPhoneVerification);
+router.patch('/users/:id/currency', changeUserCurrency);
+router.delete('/users/:id/account', deleteUserAccount);
+router.post('/users/:id/assign-bot', assignBotToUser);
+router.patch('/users/:id/trade-status', toggleTradeStatus);
+router.patch('/users/:id/signal', updateUserSignal);
+router.post('/users/:id/send-message', sendMessageToUser);
 
 // Assignment routes
 router.post('/assign/:userId/popup-form/:formId', assignPopupForm);

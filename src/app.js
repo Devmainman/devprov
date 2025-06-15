@@ -51,6 +51,14 @@ import adminTradingRoutes from './routes/adminTradingRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import adminWithdrawalRoutes from './routes/adminWithdrawalRoutes.js';
 import adminDashboardRoutes from './routes/adminDashboardRoutes.js';
+import currencyRoutes from './routes/admin/currencyRoutes.js';
+
+import ticketRoutes from './routes/ticketRoutes.js';
+
+import './models/PopupForm.js'; // Add
+import './models/PopupInvoice.js'; // Add
+import './models/PopupMessage.js'; // Add
+import './models/Assignment.js'; // Add
 
 // Verify environment loaded
 console.log('Environment loaded:', {
@@ -72,6 +80,8 @@ app.wsInstance = expressWsInstance;
 
 // Connect to Database
 connectDB();
+
+import { initializeCurrencies } from './utils/initializeCurrencies.js';
 
 // Initialize Twilio
 const twilioClient = env.TWILIO_ACCOUNT_SID 
@@ -114,8 +124,9 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRateLimiter, adminRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/trading', tradingRoutes);
-app.use('/api/account', accountRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/account', accountRoutes);
+
 app.use('/api/admin/payments', adminRateLimiter, adminPaymentRoutes);
 app.use('/api/admin/withdrawal-methods', adminRateLimiter, withdrawalMethodRoutes);
 app.use('/api/deposits', depositRoutes);
@@ -136,6 +147,9 @@ app.use('/api', messageRoutes);
 app.use('/api/admin/trading', adminRateLimiter, adminTradingRoutes);
 app.use('/api/admin/withdrawals', adminRateLimiter, adminWithdrawalRoutes);
 app.use('/api/admin/dashboard', adminRateLimiter, adminDashboardRoutes);
+app.use('/api/admin/currencies', adminRateLimiter, currencyRoutes);
+
+app.use('/api/tickets', ticketRoutes);
 
 // Test routes
 app.get('/', (req, res) => {
@@ -165,6 +179,10 @@ app.get('/test-twilio', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+});
+
+connectDB().then(async () => {
+  await initializeCurrencies();
 });
 
 // WebSocket Implementation

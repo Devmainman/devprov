@@ -1,72 +1,116 @@
+import mongoose from 'mongoose';
 import PopupForm from '../models/PopupForm.js';
 import PopupInvoice from '../models/PopupInvoice.js';
 import PopupMessage from '../models/PopupMessage.js';
-import FormSubmission from '../models/FormSubmission.js';
-import PaymentMethod from '../models/PaymentMethod.js';
-import User from '../models/User.js';
 import Assignment from '../models/Assignment.js';
 
 // Get active popup for current user
 export const getActivePopup = async (req, res) => {
   try {
-    console.log('Fetching popups for user:', req.user.id);
-    const assignment = await Assignment.findOne({
-      userId: req.user.id,
-      status: 'assigned',
-      completed: { $ne: true }
-    }).sort({ createdAt: 1 });
+    console.log('Fetching active assignments for user:', req.user.id);
 
-    if (!assignment) {
-      console.log('No active popups found');
-      return res.status(404).json({ 
-        success: false,
-        message: 'No active popups found' 
-      });
+    // Validate userId
+    if (!mongoose.Types.ObjectId.isValid(req.user.id)) {
+      console.log('Invalid userId format:', req.user.id);
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
     }
 
-    let popupData;
-    switch (assignment.type) {
-      case 'popup_form':
-        popupData = await PopupForm.findById(assignment.itemId);
-        break;
-      case 'popup_invoice':
-        popupData = await PopupInvoice.findById(assignment.itemId);
-        break;
-      case 'popup_message':
-        popupData = await PopupMessage.findById(assignment.itemId);
-        break;
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Unknown popup type'
-        });
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    console.log('Converted userId to ObjectId:', userId.toString());
+
+    // Query for all active assignments (not completed)
+    const assignments = await Assignment.find({
+      userId: userId,
+      completed: false,
+      status: { $in: ['assigned', 'pending_payment'] } // Include relevant statuses
+    })
+      .populate('popupForm')
+      .populate('popupInvoice')
+      .populate('popupMessage')
+      .sort({ priority: -1, createdAt: -1 }); // Sort by priority and recency
+
+    if (!assignments || assignments.length === 0) {
+      console.log('No active assignments found for user:', req.user.id);
+      return res.json({ success: false, message: 'No active popups found' });
     }
+
+    // Map assignments to popup data
+    const popups = assignments.map(assignment => {
+      let popupData;
+      let type;
+
+      if (assignment.type === 'popup_form' && assignment.popupForm) {
+        type = 'form';
+        popupData = {
+          _id: assignment._id.toString(),
+          itemId: assignment.popupForm._id.toString(),
+          type: 'form',
+          title: assignment.popupForm.title,
+          description: assignment.popupForm.description || '',
+          fields: assignment.popupForm.fields || [],
+          status: assignment.status,
+          blockProgress: assignment.blockProgress
+        };
+      } else if (assignment.type === 'popup_invoice' && assignment.popupInvoice) {
+        type = 'invoice';
+        popupData = {
+          _id: assignment._id.toString(),
+          itemId: assignment.popupInvoice._id.toString(),
+          type: 'invoice',
+          title: assignment.popupInvoice.title,
+          amount: assignment.popupInvoice.amount,
+          currency: assignment.popupInvoice.currency,
+          description: assignment.popupInvoice.description || '',
+          paymentStatus: assignment.popupInvoice.paymentStatus,
+          status: assignment.status,
+          blockProgress: assignment.blockProgress
+        };
+      } else if (assignment.type === 'popup_message' && assignment.popupMessage) {
+        type = 'message';
+        popupData = {
+          _id: assignment._id.toString(),
+          itemId: assignment.popupMessage._id.toString(),
+          type: 'message',
+          title: assignment.popupMessage.title,
+          description: assignment.popupMessage.description || '',
+          filePath: assignment.popupMessage.filePath || '',
+          acknowledged: assignment.popupMessage.acknowledged || false,
+          status: assignment.status,
+          blockProgress: assignment.blockProgress
+        };
+      } else {
+        return null; // Skip invalid assignments
+      }
+
+      return popupData;
+    }).filter(popup => popup !== null);
+
+    if (popups.length === 0) {
+      console.log('No valid popups found after mapping:', req.user.id);
+      return res.json({ success: false, message: 'No valid popups found' });
+    }
+
+    console.log('Found popups:', popups.map(p => ({
+      _id: p._id,
+      type: p.type,
+      itemId: p.itemId
+    })));
 
     res.json({
       success: true,
-      popup: {
-        _id: assignment._id,
-        type: assignment.type.replace('popup_', ''),
-        title: popupData.title,
-        description: popupData.description,
-        ...(assignment.metadata || {}),
-        ...(assignment.type === 'popup_invoice' && { 
-          amount: popupData.amount,
-          currency: popupData.currency 
-        }),
-        ...(assignment.type === 'popup_form' && {
-          fields: popupData.fields
-        })
-      }
+      popups // Return all valid popups
     });
   } catch (error) {
-    console.error('Error getting active popup:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error fetching popup'
+    console.error('Error fetching active popups:', {
+      message: error.message,
+      stack: error.stack,
+      userId: req.user.id
     });
+    res.status(500).json({ success: false, message: 'Server error fetching popups', error: error.message });
   }
 };
+
+
 
 // Mark popup as completed
 export const completePopup = async (req, res) => {
@@ -74,149 +118,80 @@ export const completePopup = async (req, res) => {
     const assignment = await Assignment.findOneAndUpdate(
       {
         _id: req.params.id,
-        userId: req.user.id
+        userId: req.user.id,
       },
-      { completed: true },
+      { completed: true, status: 'completed' },
       { new: true }
     );
 
     if (!assignment) {
       return res.status(404).json({
         success: false,
-        message: 'Popup assignment not found'
+        message: 'Popup assignment not found',
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
-      message: 'Popup marked as completed'
+      message: 'Popup marked as completed',
     });
   } catch (error) {
     console.error('Error completing popup:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error completing popup'
+      message: 'Server error completing popup',
     });
   }
 };
 
-// Handle form submission
-export const submitPopupForm = async (req, res) => {
-  try {
-    const assignment = await Assignment.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        userId: req.user.id,
-        type: 'popup_form'
-      },
-      { 
-        completed: true,
-        'metadata.formData': req.body 
-      },
-      { new: true }
-    );
-
-    if (!assignment) {
-      return res.status(404).json({
-        success: false,
-        message: 'Form assignment not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Form submitted successfully'
-    });
-  } catch (error) {
-    console.error('Error submitting form:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error submitting form'
-    });
-  }
-};
-
-// Handle invoice payment
-export const payPopupInvoice = async (req, res) => {
-  try {
-    const assignment = await Assignment.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        userId: req.user.id,
-        type: 'popup_invoice'
-      },
-      { 
-        completed: true,
-        'metadata.paymentStatus': 'paid',
-        'metadata.paymentDate': new Date()
-      },
-      { new: true }
-    );
-
-    if (!assignment) {
-      return res.status(404).json({
-        success: false,
-        message: 'Invoice assignment not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Invoice paid successfully'
-    });
-  } catch (error) {
-    console.error('Error paying invoice:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error processing payment'
-    });
-  }
-};
-
-// Handle message acknowledgement
 export const acknowledgePopupMessage = async (req, res) => {
   try {
+    console.log('Acknowledging message for user:', req.user.id, 'assignmentId:', req.params.assignmentId);
     const assignment = await Assignment.findOneAndUpdate(
       {
-        _id: req.params.id,
+        _id: req.params.assignmentId,
         userId: req.user.id,
-        type: 'popup_message'
+        type: 'popup_message',
       },
-      { 
+      {
         completed: true,
-        'metadata.acknowledgedAt': new Date()
+        status: 'acknowledged',
+        'metadata.acknowledgedAt': new Date(),
       },
       { new: true }
     );
 
     if (!assignment) {
+      console.log('Assignment not found for ID:', req.params.assignmentId);
       return res.status(404).json({
         success: false,
-        message: 'Message assignment not found'
+        message: 'Message assignment not found',
       });
     }
 
-    res.json({
+    await PopupMessage.findByIdAndUpdate(assignment.itemId, { acknowledged: true });
+
+    res.status(200).json({
       success: true,
-      message: 'Message acknowledged successfully'
+      message: 'Message acknowledged successfully',
     });
   } catch (error) {
     console.error('Error acknowledging message:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error acknowledging message'
+      message: 'Server error acknowledging message',
     });
   }
 };
 
-// Additional exports for getting available popups
 export const getAvailablePopupForms = async (req, res) => {
   try {
     const forms = await PopupForm.find({ status: 'Active' })
       .select('title description fields status icon createdAt');
-    res.json(forms);
+    res.status(200).json({ success: true, forms });
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching forms' });
+    console.error('Error fetching forms:', err);
+    res.status(500).json({ success: false, message: 'Error fetching forms' });
   }
 };
 
@@ -224,9 +199,10 @@ export const getAvailablePopupInvoices = async (req, res) => {
   try {
     const invoices = await PopupInvoice.find({ status: 'Active' })
       .select('title amount currency description assignedTo status createdAt');
-    res.json(invoices);
+    res.status(200).json({ success: true, invoices });
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching invoices' });
+    console.error('Error fetching invoices:', err);
+    res.status(500).json({ success: false, message: 'Error fetching invoices' });
   }
 };
 
@@ -234,8 +210,11 @@ export const getAvailablePopupMessages = async (req, res) => {
   try {
     const messages = await PopupMessage.find({ status: 'Active' })
       .select('title description file filePath status createdAt');
-    res.json(messages);
+    res.status(200).json({ success: true, messages });
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching messages' });
+    console.error('Error fetching messages:', err);
+    res.status(500).json({ success: false, message: 'Error fetching messages' });
   }
 };
+
+// Additional exports for getting available popups

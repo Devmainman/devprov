@@ -38,7 +38,11 @@ export const assignPopupForm = async (req, res) => {
     if (!user || !form) {
       return res.status(404).json({ success: false, message: 'User or form not found' });
     }
-    const existingAssignment = await Assignment.findOne({ userId, itemId: formId, type: 'popup_form' });
+    const existingAssignment = await Assignment.findOne({
+      userId,
+      referenceId: formId,
+      type: 'popup_form',
+    });
     if (existingAssignment) {
       return res.status(400).json({ success: false, message: 'Form already assigned to this user' });
     }
@@ -48,6 +52,7 @@ export const assignPopupForm = async (req, res) => {
       adminId: req.user.id,
       type: 'popup_form',
       itemId: formId,
+      referenceId: formId, // Set referenceId to formId
       title: form.title,
       status: 'assigned',
       blockProgress: true,
@@ -55,6 +60,11 @@ export const assignPopupForm = async (req, res) => {
         description: form.description,
         fieldsCount: form.fields.length,
       },
+    });
+    console.log('Creating assignment:', {
+      userId: userId.toString(),
+      adminId: req.user.id.toString(),
+      formId: formId.toString(),
     });
     await assignment.save();
     res.json({ success: true, message: 'Form assigned successfully', assignment });
@@ -78,7 +88,11 @@ export const assignPopupInvoice = async (req, res) => {
     if (!user || !invoice) {
       return res.status(404).json({ success: false, message: 'User or invoice not found' });
     }
-    const existingAssignment = await Assignment.findOne({ userId, itemId: invoiceId, type: 'popup_invoice' });
+    const existingAssignment = await Assignment.findOne({
+      userId,
+      referenceId: invoiceId,
+      type: 'popup_invoice',
+    });
     if (existingAssignment) {
       return res.status(400).json({ success: false, message: 'Invoice already assigned to this user' });
     }
@@ -87,6 +101,7 @@ export const assignPopupInvoice = async (req, res) => {
       adminId: req.user.id,
       type: 'popup_invoice',
       itemId: invoiceId,
+      referenceId: invoiceId, // Set referenceId to invoiceId
       title: invoice.title,
       status: 'pending_payment',
       blockProgress: true,
@@ -116,7 +131,11 @@ export const assignPopupMessage = async (req, res) => {
     if (!user || !message) {
       return res.status(404).json({ success: false, message: 'User or message not found' });
     }
-    const existingAssignment = await Assignment.findOne({ userId, itemId: messageId, type: 'popup_message' });
+    const existingAssignment = await Assignment.findOne({
+      userId,
+      referenceId: messageId,
+      type: 'popup_message',
+    });
     if (existingAssignment) {
       return res.status(400).json({ success: false, message: 'Message already assigned to this user' });
     }
@@ -126,6 +145,7 @@ export const assignPopupMessage = async (req, res) => {
       adminId: req.user.id,
       type: 'popup_message',
       itemId: messageId,
+      referenceId: messageId, // Set referenceId to messageId
       title: message.title,
       status: 'assigned',
       blockProgress: false,

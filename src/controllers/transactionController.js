@@ -1,42 +1,70 @@
-// In transactionController.js
+import Transaction from '../models/Transaction.js';
+import Deposit from '../models/Deposit.js';
+import Withdrawal from '../models/Withdrawal.js'; // Ensure you have a Withdrawal model
+import User from '../models/User.js';
+
 export const getTransactions = async (req, res) => {
-    try {
-      const { search = '' } = req.query;
-      const query = { userId: req.user.id };
-  
-      if (search) {
-        query.$or = [
-          { bankName: new RegExp(search, 'i') },
-          { accountName: new RegExp(search, 'i') },
-          { reference: new RegExp(search, 'i') },
-          { type: new RegExp(search, 'i') }
-        ];
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+    const userId = req.user.id;
+
+    // Fetch transactions from both collections
+    const [deposits, withdrawals, totalDeposits, totalWithdrawals] = await Promise.all([
+      Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Withdrawal.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Deposit.countDocuments({ userId }),
+      Withdrawal.countDocuments({ userId })
+    ]);
+
+    // Combine and format transactions
+    const combinedTransactions = [
+      ...deposits.map(d => ({
+        id: d._id,
+        type: 'deposit',
+        amount: d.amount,
+        currency: d.currency,
+        status: d.status,
+        reference: d.transactionReference,
+        createdAt: d.createdAt
+      })),
+      ...withdrawals.map(w => ({
+        id: w._id,
+        type: 'withdrawal',
+        amount: w.amount,
+        currency: w.currency,
+        status: w.status,
+        reference: w.transactionReference,
+        createdAt: w.createdAt
+      }))
+    ].sort((a, b) => b.createdAt - a.createdAt);
+
+    const total = totalDeposits + totalWithdrawals;
+
+    res.json({
+      success: true,
+      data: {
+        transactions: combinedTransactions,
+        pagination: {
+          total,
+          pages: Math.ceil(total / limit),
+          currentPage: parseInt(page),
+          limit: parseInt(limit)
+        }
       }
-  
-      const transactions = await Transaction.find(query)
-        .sort({ createdAt: -1 })
-        .limit(20);
-  
-      res.json({
-        success: true,
-        transactions: transactions.map(t => ({
-          id: t._id,
-          bankName: t.bankName,
-          accountName: t.accountName,
-          accountNumber: t.accountNumber,
-          amount: t.amount,
-          currency: t.currency,
-          type: t.type,
-          status: t.status,
-          reference: t.reference,
-          createdAt: t.createdAt
-        }))
-      });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server error' });
-    }
-  };
+    });
+  } catch (err) {
+    console.error('Get transactions error:', {
+      error: err.message,
+      userId: req.user.id,
+      query: req.query
+    });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch transactions' 
+    });
+  }
+};
 
   export const createDeposit = async (req, res) => {
     try {

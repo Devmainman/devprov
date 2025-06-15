@@ -7,7 +7,8 @@ import {
   uploadFaceImage,
   verifyOtp,
   saveAddress,
-  getCurrentUser
+  getCurrentUser,
+  getVerificationStatus
 } from '../controllers/verificationController.js';
 
 import { authenticate } from '../middleware/auth.js';
@@ -33,6 +34,9 @@ router.get('/test-twilio', async (req, res) => {
       });
     }
   });
+
+
+router.get('/verification-status', authenticate, getVerificationStatus);
 
 // @route   POST /api/verification/profile
 // @desc    Complete user profile

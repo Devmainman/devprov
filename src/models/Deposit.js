@@ -4,7 +4,13 @@ const depositSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    set: (value) => {
+      // Convert string to ObjectId if needed
+      return typeof value === 'string' 
+        ? new mongoose.Types.ObjectId(value) 
+        : value;
+    }
   },
   paymentMethodId: {
     type: String,
