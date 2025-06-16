@@ -32,6 +32,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import adminPaymentRoutes from './routes/admin/paymentRoutes.js';
 import withdrawalMethodRoutes from './routes/withdrawalMethodRoutes.js';
 import depositRoutes from './routes/depositRoutes.js';
+import invoiceRoutes from './routes/invoiceRoutes.js';
 import popupFormRoutes from './routes/popupFormRoutes.js';
 import popupInvoiceRoutes from './routes/popupInvoiceRoutes.js';
 import popupMessageRoutes from './routes/popupMessageRoutes.js';
@@ -54,6 +55,8 @@ import adminDashboardRoutes from './routes/adminDashboardRoutes.js';
 import currencyRoutes from './routes/admin/currencyRoutes.js';
 
 import ticketRoutes from './routes/ticketRoutes.js';
+
+import upgradeInvoiceRoutes from './routes/upgradeInvoiceRoutes.js';
 
 import './models/PopupForm.js'; // Add
 import './models/PopupInvoice.js'; // Add
@@ -148,7 +151,8 @@ app.use('/api/admin/trading', adminRateLimiter, adminTradingRoutes);
 app.use('/api/admin/withdrawals', adminRateLimiter, adminWithdrawalRoutes);
 app.use('/api/admin/dashboard', adminRateLimiter, adminDashboardRoutes);
 app.use('/api/admin/currencies', adminRateLimiter, currencyRoutes);
-
+app.use('/api/upgradeinvoices', adminRateLimiter, upgradeInvoiceRoutes);
+app.use('/api/admin/invoices', adminRateLimiter, invoiceRoutes);
 app.use('/api/tickets', ticketRoutes);
 
 // Test routes

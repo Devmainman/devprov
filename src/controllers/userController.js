@@ -11,7 +11,7 @@ import FormSubmission from '../models/FormSubmission.js';
 import PopupForm from '../models/PopupForm.js';
 import PopupInvoice from '../models/PopupInvoice.js';
 import PopupMessage from '../models/PopupMessage.js';
-import Deposit from '../models/Deposit.js';
+import Invoice from '../models/Invoice.js';
 import PaymentMethod from '../models/PaymentMethod.js';
 import path from 'path';
 import fs from 'fs';
@@ -351,66 +351,95 @@ export const payPopupInvoice = async (req, res) => {
   try {
     const { invoiceId } = req.params;
     const { assignmentId, paymentMethodId } = req.body;
-    // FIX: Changed from _id to id (matches JWT payload)
-    const userId = req.user.id; // This is the critical fix
+    const userId = req.user.id;
 
-    const invoice = await PopupInvoice.findById(invoiceId);
+    const popupInvoice = await PopupInvoice.findById(invoiceId);
     const assignment = await Assignment.findById(assignmentId);
     const paymentMethod = await PaymentMethod.findOne({ methodId: paymentMethodId, isActive: true });
+    const user = await User.findById(userId).select('accountId firstName lastName');
 
-    // FIX: Safer checks with optional chaining
-    if (!invoice || !assignment || !paymentMethod) {
-      return res.status(404).json({ success: false, message: 'Invoice, assignment, or payment method not found' });
+    // Validation checks
+    if (!popupInvoice || !assignment || !paymentMethod || !user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Invoice, assignment, payment method, or user not found' 
+      });
     }
 
-    // FIX: Added existence check before toString()
-    if (!assignment.userId || assignment.userId.toString() !== userId) {
-      return res.status(403).json({ success: false, message: 'Unauthorized access to assignment' });
+    if (assignment.userId.toString() !== userId) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Unauthorized access to assignment' 
+      });
     }
 
-    if (invoice.paymentStatus === 'paid') {
-      return res.status(400).json({ success: false, message: 'Invoice already paid' });
+    if (popupInvoice.paymentStatus === 'paid') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invoice already paid' 
+      });
     }
 
-    // if (amount !== invoice.amount || currency !== invoice.currency) {
-    //   return res.status(400).json({ success: false, message: 'Invalid amount or currency' });
-    // }
-
-    if (!req.files || !req.files.paymentProof) {
-      return res.status(400).json({ success: false, message: 'Payment proof required' });
+    if (!req.files?.paymentProof) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Payment proof required' 
+      });
     }
 
+    // Handle file upload
     const paymentProof = req.files.paymentProof;
     const uploadDir = path.join(__dirname, '../Uploads/payment-proofs');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+    
     const fileName = `proof-${Date.now()}${path.extname(paymentProof.name)}`;
     const filePath = path.join(uploadDir, fileName);
     await paymentProof.mv(filePath);
 
-    const deposit = new Deposit({
-      userId,
-      paymentMethodId,
-      amount: invoice.amount, // Get from invoice
-      currency: invoice.currency, // Get from invoice
+    // Create new Invoice instead of Deposit
+    const invoice = new Invoice({
+      accountId: user.accountId,
+      fullName: `${user.firstName} ${user.lastName}`,
+      paymentMethod: paymentMethod.title,  // Free-text field
+      paymentMethodId: paymentMethod.methodId, // Unique identifier
+      amount: popupInvoice.amount,
+      currency: popupInvoice.currency,
+      entity: 'User',
+      status: 'pending',
       paymentProof: `/payment-proofs/${fileName}`,
-      transactionReference: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+      userId: user._id,
       metadata: {
-        invoiceId,
-        assignmentId,
-        paymentMethodDetails: paymentMethod.details,
-      },
+        originalInvoiceId: popupInvoice._id,
+        assignmentId: assignment._id,
+        paymentMethodId: paymentMethod._id
+      }
     });
 
-    await deposit.save();
-    await PopupInvoice.findByIdAndUpdate(invoiceId, { paymentStatus: 'pending',  assignmentId: assignmentId });
-    await Assignment.findByIdAndUpdate(assignmentId, { status: 'completed', completedAt: new Date() });
+    await invoice.save();
 
-    res.json({ success: true, message: 'Payment submitted successfully', deposit });
+    // Update popup invoice status
+    popupInvoice.paymentStatus = 'pending';
+    popupInvoice.assignmentId = assignmentId;
+    await popupInvoice.save();
+
+    // Update assignment status
+    assignment.status = 'completed';
+    assignment.completedAt = new Date();
+    await assignment.save();
+
+    res.json({ 
+      success: true, 
+      message: 'Payment submitted successfully', 
+      invoiceId: invoice._id 
+    });
+    
   } catch (err) {
     console.error('PayPopupInvoice error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
