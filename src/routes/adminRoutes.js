@@ -92,9 +92,9 @@ router.patch('/users/:id/signal', updateUserSignal);
 router.post('/users/:id/send-message', sendMessageToUser);
 
 // ====== Consolidated Assignment Routes ======
-router.post('/assign/:userId/popup-form/:formId', assignPopupForm);
-router.post('/assign/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
-router.post('/assign/:userId/popup-message/:messageId', assignPopupMessage);
+router.post('/assign/:userId/popup-forms/:formId', assignPopupForm);
+router.post('/assign/:userId/popup-invoices/:invoiceId', assignPopupInvoice);
+router.post('/assign/:userId/popup-messages/:messageId', assignPopupMessage);
 router.get('/assignments/:userId', getUserAssignments);
 router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
 
