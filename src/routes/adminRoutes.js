@@ -100,9 +100,9 @@ router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
 
 
 // Assign items
-router.post('/assign/:userId/popup-form/:formId', assignPopupForm);
-router.post('/assign/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
-router.post('/assign/:userId/popup-message/:messageId', assignPopupMessage);
+router.post('/assignto/:userId/popup-form/:formId', assignPopupForm);
+router.post('/assignto/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
+router.post('/assignto/:userId/popup-message/:messageId', assignPopupMessage);
 
 // Get user assignments
 router.get('/assignments/:userId', getUserAssignments);
