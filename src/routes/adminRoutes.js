@@ -91,23 +91,11 @@ router.patch('/users/:id/trade-status', toggleTradeStatus);
 router.patch('/users/:id/signal', updateUserSignal);
 router.post('/users/:id/send-message', sendMessageToUser);
 
-// Assignment routes
+// ====== Consolidated Assignment Routes ======
 router.post('/assign/:userId/popup-form/:formId', assignPopupForm);
 router.post('/assign/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
 router.post('/assign/:userId/popup-message/:messageId', assignPopupMessage);
 router.get('/assignments/:userId', getUserAssignments);
-router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
-
-
-// Assign items
-router.post('/assignto/:userId/popup-form/:formId', assignPopupForm);
-router.post('/assignto/:userId/popup-invoice/:invoiceId', assignPopupInvoice);
-router.post('/assignto/:userId/popup-message/:messageId', assignPopupMessage);
-
-// Get user assignments
-router.get('/assignments/:userId', getUserAssignments);
-
-// Update assignment status
 router.patch('/assignments/:assignmentId/status', updateAssignmentStatus);
 
 // Dashboard routes
