@@ -98,7 +98,17 @@ const twilioClient = env.TWILIO_ACCOUNT_SID
 console.log('Twilio Client Status:', twilioClient ? 'Ready' : 'Disabled');
 
 // Middleware
-app.use(cors());
+const corsOptions = {
+  origin: [
+    'http://orderbooklet.com.ng/',
+    'https://backendexpress.orderbooklet.com.ng/'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+app.use(cors(corsOptions));
+// app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 app.use(fileUpload({
