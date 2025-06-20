@@ -2,7 +2,8 @@
 import express from 'express';
 import { 
   createWithdrawal,
-  getUserWithdrawals
+  getUserWithdrawals,
+  updateWithdrawalStatus
 } from '../controllers/WithdrawalController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -13,5 +14,6 @@ router.use(authenticate);
 
 router.post('/', createWithdrawal);
 router.get('/', getUserWithdrawals);
+router.put('/:id/status', updateWithdrawalStatus);
 
 export default router;

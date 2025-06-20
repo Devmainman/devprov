@@ -1,6 +1,7 @@
 import PaymentMethod from '../models/PaymentMethod.js';
 import Deposit from '../models/Deposit.js';
 import PopupInvoice from '../models/PopupInvoice.js';
+import Transaction from '../models/Transaction.js';
 import Assignment from '../models/Assignment.js';
 import path from 'path';
 import { fileURLToPath } from 'url';

@@ -2,6 +2,7 @@ import Transaction from '../models/Transaction.js';
 import Deposit from '../models/Deposit.js';
 import Withdrawal from '../models/Withdrawal.js'; // Ensure you have a Withdrawal model
 import User from '../models/User.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export const getTransactions = async (req, res) => {
   try {
@@ -9,13 +10,14 @@ export const getTransactions = async (req, res) => {
     const skip = (page - 1) * limit;
     const userId = req.user.id;
 
-    // Fetch transactions from both collections
-    const [deposits, withdrawals, totalDeposits, totalWithdrawals] = await Promise.all([
-      Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Withdrawal.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Deposit.countDocuments({ userId }),
-      Withdrawal.countDocuments({ userId })
-    ]);
+   // Fixed: use 'user' instead of 'userId' for withdrawals
+   const [deposits, withdrawals, totalDeposits, totalWithdrawals] = await Promise.all([
+    Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Withdrawal.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), // ✅ Fixed
+    Deposit.countDocuments({ userId }),
+    Withdrawal.countDocuments({ user: userId }) // ✅ Fixed
+  ]);
+
 
     // Combine and format transactions
     const combinedTransactions = [
@@ -34,7 +36,7 @@ export const getTransactions = async (req, res) => {
         amount: w.amount,
         currency: w.currency,
         status: w.status,
-        reference: w.transactionReference,
+        reference: w._id.toString(),
         createdAt: w.createdAt
       }))
     ].sort((a, b) => b.createdAt - a.createdAt);

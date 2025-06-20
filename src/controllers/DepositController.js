@@ -1,11 +1,13 @@
 import Deposit from '../models/Deposit.js';
 import User from '../models/User.js';
 import Transaction from '../models/Transaction.js';
+import { createTransaction } from '../services/transactionService.js';
 import mongoose from 'mongoose';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { v4 as uuidv4 } from 'uuid'; // Add this import
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -44,7 +46,8 @@ export const createDeposit = async (req, res) => {
 
     await paymentProof.mv(uploadPath);
 
-    const transactionReference = `DEP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    // Generate unique reference using UUID
+    const transactionReference = `DEP-${uuidv4().replace(/-/g, '').slice(0, 12)}`;
 
     const deposit = new Deposit({
       userId,
@@ -58,14 +61,14 @@ export const createDeposit = async (req, res) => {
 
     await deposit.save({ session });
 
-    await Transaction.create([{
-      userId,
+    await createTransaction({
+      userId: userId,
       amount: parseFloat(amount),
-      currency,
+      currency: currency,
       type: 'deposit',
       status: 'pending',
       reference: transactionReference
-    }], { session });
+    }, { session });
 
     await session.commitTransaction();
     session.endSession();
@@ -202,12 +205,14 @@ export const updateDepositStatus = async (req, res) => {
     const { status, adminNotes } = req.body;
     const adminId = req.user.id;
 
-    if (!['approved', 'rejected', 'processing'].includes(status)) {
+    // Validate status input
+    const validStatuses = ['approved', 'rejected', 'processing'];
+    if (!validStatuses.includes(status)) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({ 
         success: false,
-        message: 'Invalid status' 
+        message: `Invalid status. Valid values: ${validStatuses.join(', ')}`
       });
     }
 
@@ -221,51 +226,77 @@ export const updateDepositStatus = async (req, res) => {
       });
     }
 
-    if (status === 'approved' && deposit.status !== 'approved') {
-      await User.findByIdAndUpdate(
-        deposit.userId, 
-        { $inc: { balance: deposit.amount } },
-        { session }
-      );
-
-      await Transaction.create([{
-        userId: deposit.userId,
-        amount: deposit.amount,
-        type: 'deposit',
-        status: 'completed',
-        reference: deposit.transactionReference,
-        currency: deposit.currency
-      }], { session });
-    }
-
-    if (status === 'rejected' && deposit.status === 'approved') {
-      await User.findByIdAndUpdate(
-        deposit.userId, 
-        { $inc: { balance: -deposit.amount } },
-        { session }
-      );
-    }
-
+    // Capture previous status BEFORE updating
+    const previousStatus = deposit.status;
+    
+    // Update deposit status first
     deposit.status = status;
-    deposit.adminNotes = adminNotes;
+    deposit.adminNotes = adminNotes || '';
     deposit.processedBy = adminId;
     deposit.processedAt = new Date();
     await deposit.save({ session });
+
+    // Handle balance updates and transaction status changes
+    if (status === 'approved' && previousStatus !== 'approved') {
+      // Update user balance
+      const user = await User.findByIdAndUpdate(
+        deposit.userId, 
+        { $inc: { balance: deposit.amount } },
+        { session, new: true }
+      );
+      
+      console.log(`[DEBUG] User ${deposit.userId} balance updated:`, 
+        `Previous: ${user.balance - deposit.amount}`, 
+        `New: ${user.balance}`
+      );
+
+      // Update transaction status
+      await Transaction.updateOne(
+        { reference: deposit.transactionReference },
+        { $set: { status: 'completed' } },
+        { session }
+      );
+    }
+    else if (status === 'rejected') {
+      // Handle balance reversal for previously approved deposits
+      if (previousStatus === 'approved') {
+        const user = await User.findByIdAndUpdate(
+          deposit.userId, 
+          { $inc: { balance: -deposit.amount } },
+          { session, new: true }
+        );
+        
+        console.log(`[DEBUG] User ${deposit.userId} balance reversed:`, 
+          `Previous: ${user.balance + deposit.amount}`, 
+          `New: ${user.balance}`
+        );
+      }
+      
+      // Update transaction status to failed for all rejections
+      await Transaction.updateOne(
+        { reference: deposit.transactionReference },
+        { $set: { status: 'failed' } },
+        { session }
+      );
+    }
 
     await session.commitTransaction();
     session.endSession();
 
     res.json({
       success: true,
-      message: 'Deposit status updated'
+      message: 'Deposit status updated successfully'
     });
+    
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
     console.error('Update deposit error:', err);
+    
     res.status(500).json({ 
       success: false,
-      message: 'Failed to update deposit' 
+      message: 'Failed to update deposit',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };

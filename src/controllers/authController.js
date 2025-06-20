@@ -206,17 +206,13 @@ export const verifyAdminAccess = async (req, res) => {
     res.json({
       success: true,
       user: {
-        _id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        accountId: user.accountId,
-        isVerified: true, // Treat admin access as verified
-        // Add other fields needed by UserAuthContext
+        ...user.toObject(),
+        isVerified: true // force-verify if needed
       },
       token: sessionToken,
       message: 'Admin access verified'
     });
+    
   } catch (err) {
     console.error('Verify admin access error:', err);
     if (err.name === 'JsonWebTokenError') {

@@ -5,9 +5,10 @@ import Transaction from '../models/Transaction.js';
 
 export const getBalance = async (req, res) => {
   try {
-    // Get user with balance information
-
-    const user = await User.findById(req.user.id)
+    // Convert req.user.id to ObjectId
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    
+    const user = await User.findById(userId)
       .select('accountId currency verification balance')
       .lean();
 
@@ -18,102 +19,28 @@ export const getBalance = async (req, res) => {
       });
     }
     
-    const userId = req.user.id;
-    const oneHourAgo = new Date(Date.now() - 3600000);
-
-    // Calculate balance from transactions (more accurate method)
-    const balanceResult = await Transaction.aggregate([
-      { 
-        $match: { 
-          userId: userId,
-          status: {$in: ['completed', 'pending']},
-          
-        } 
-      },
-      {
-        $group: {
-          _id: null,
-          balance: {
-            $sum: {
-              $cond: [
-                { $eq: ["$type", "deposit"] },
-                "$amount",
-                { $multiply: ["$amount", -1] } // withdrawals are negative
-              ]
-            }
-          }
-        }
-      }
-    ]);
-
-    const calculatedBalance = balanceResult[0]?.balance || 0;
-    const storedBalance = user.balance || 0;
-
-    // If there's a discrepancy, update the user's balance field
-    if (calculatedBalance !== storedBalance) {
-      await User.findByIdAndUpdate(req.user.id, {
-        $set: { balance: calculatedBalance }
-      });
-    }
-
-    // Calculate hourly change
+    // Debug log to verify balance
+    console.log(`[DEBUG] User ${userId} balance: ${user.balance}`);
     
-    const previousBalanceResult = await Transaction.aggregate([
-      { 
-        $match: { 
-          userId: userId,
-          status: 'completed',
-          createdAt: { $lt: oneHourAgo }
-        } 
-      },
-      {
-        $group: {
-          _id: null,
-          balance: {
-            $sum: {
-              $cond: [
-                { $eq: ["$type", "deposit"] },
-                "$amount",
-                { $multiply: ["$amount", -1] }
-              ]
-            }
-          }
-        }
-      }
-    ]);
-
-    const previousBalance = previousBalanceResult[0]?.balance || 0;
-    const changeAmount = calculatedBalance - previousBalance;
-    const changePercentage = previousBalance !== 0 
-      ? ((changeAmount / previousBalance) * 100).toFixed(2)
-      : '0.00';
-
     res.json({
       success: true,
       data: {
-        balance: calculatedBalance,
+        balance: user.balance,
         currency: user.currency || 'NGN',
-        change: {
-          amount: Math.abs(changeAmount),
-          percentage: Math.abs(changePercentage),
-          direction: changeAmount >= 0 ? 'up' : 'down'
-        },
         accountId: user.accountId,
         verificationStatus: user.verification
       }
     });
 
   } catch (err) {
-    console.error('Balance calculation error:', {
+    console.error('Balance fetch error:', {
       message: err.message,
-      stack: err.stack,
-      userId: req.user?.id,
-      query: req.query
+      userId: req.user.id,
+      stack: err.stack
     });
-    
     res.status(500).json({
       success: false,
-      message: 'Failed to calculate balance',
+      message: 'Failed to fetch balance',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
@@ -184,7 +111,7 @@ export const getTransactions = async (req, res) => {
 export const createDeposit = async (req, res) => {
   try {
     const { amount, bankName, accountNumber, reference } = req.body;
-    const userId = req.user.id; // Changed from _id to id
+    const userId = req.user.id;
 
     // Validate input
     if (!amount || amount <= 0) {
@@ -196,7 +123,7 @@ export const createDeposit = async (req, res) => {
 
     // Create deposit transaction
     const deposit = new Transaction({
-      userId: new mongoose.Types.ObjectId(userId), // Ensure proper ID format
+      userId: new mongoose.Types.ObjectId(userId),
       amount,
       type: 'deposit',
       status: 'completed',
@@ -209,12 +136,11 @@ export const createDeposit = async (req, res) => {
     await deposit.save();
 
     // Update user's balance field
-    await User.findByIdAndUpdate(userId, {
-      $inc: { balance: amount }
-    });
-
-    // Get updated balance
-    const updatedUser = await User.findById(userId).select('balance');
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, 
+      { $inc: { balance: amount } },
+      { new: true } // Return updated document
+    ).select('balance');
 
     res.status(201).json({
       success: true,

@@ -24,6 +24,11 @@ const userSchema = new mongoose.Schema({
   },
   firstName: { type: String, trim: true },
   lastName: { type: String, trim: true },
+  balance: {
+    type: Number,
+    default: 0,
+    min: [0, 'Balance cannot be negative']
+  },
   mobile: {  
     type: String,
     trim: true,
@@ -46,7 +51,6 @@ const userSchema = new mongoose.Schema({
   },
   currency: { 
     type: String, 
-    enum: ['USD', 'EUR', 'GBP', 'NGN', ''], 
     default: 'USD' 
   },
   address: {
@@ -94,11 +98,6 @@ const userSchema = new mongoose.Schema({
   otp: {
     code: { type: String, trim: true },
     expiresAt: { type: Date }
-  },
-  balance: {
-    type: Number,
-    default: 0,
-    min: [0, 'Balance cannot be negative']
   },
   accountType: { 
     type: String, 
@@ -164,18 +163,18 @@ const userSchema = new mongoose.Schema({
     referralBonusRate: { type: Number, default: 0.1, min: 0 }
   },
   unreadCount: { type: Number, default: 0, min: 0 },
-  transactions: [{
-    _id: false,
-    id: { type: String, default: () => uuidv4() },
-    amount: { type: Number, required: true, min: 0 },
-    currency: { type: String, enum: ['USD', 'EUR', 'GBP', 'NGN'], required: true },
-    type: { type: String, enum: ['deposit', 'withdrawal'], required: true },
-    status: { type: String, enum: ['completed', 'pending', 'failed'], default: 'completed' },
-    reference: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now },
-    adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    metadata: { type: Object }
-  }],
+  // transactions: [{
+  //   _id: false,
+  //   id: { type: String, default: () => uuidv4() },
+  //   amount: { type: Number, required: true, min: 0 },
+  //   currency: { type: String, enum: ['USD', 'EUR', 'GBP', 'NGN'], required: true },
+  //   type: { type: String, enum: ['deposit', 'withdrawal'], required: true },
+  //   status: { type: String, enum: ['completed', 'pending', 'failed'], default: 'completed' },
+  //   reference: { type: String, required: true },
+  //   createdAt: { type: Date, default: Date.now },
+  //   adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  //   metadata: { type: Object }
+  // }],
   tradingEnabled: { type: Boolean, default: false },
   tradingSignal: { 
     type: String, 
@@ -187,7 +186,18 @@ const userSchema = new mongoose.Schema({
   joinedDate: { type: Date, default: Date.now },
   lastLogin: { type: Date, default: null },
   tokenVersion: { type: Number, default: 0 }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  toJSON: {
+    virtuals: true,
+    transform: function(doc, ret) {
+      delete ret.__v;
+      ret.id = ret._id;
+      delete ret._id;
+      return ret;
+    }
+  }
+});
 
 // Add indexes for frequently queried fields
 
@@ -221,12 +231,43 @@ userSchema.pre('save', function(next) {
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+// Add pre-save hook to prevent negative balance
+userSchema.pre('save', function(next) {
+  if (this.isModified('balance') && this.balance < 0) {
+    return next(new Error('Balance cannot be negative'));
+  }
+  next();
+});
 
+// Add virtual property for walletBalance
+userSchema.virtual('walletBalance').get(function() {
+  return this.balance || 0;
+});
+
+// Add real-time balance update method
+userSchema.methods.updateBalance = async function(amount, type, session = null) {
+  const updateOp = type === 'credit' 
+    ? { $inc: { balance: amount } }
+    : { $inc: { balance: -amount } };
+
+  const options = session ? { session } : {};
+  
+  const updatedUser = await User.findByIdAndUpdate(
+    this._id,
+    updateOp,
+    { new: true, ...options }
+  );
+
+  if (!updatedUser) throw new Error('User not found');
+  return updatedUser;
+};
 // Method to invalidate tokens
 userSchema.methods.invalidateTokens = async function() {
   this.tokenVersion = (this.tokenVersion || 0) + 1;
   return this.save();
 };
+
+
 
 const User = mongoose.model('User', userSchema);
 

@@ -21,6 +21,8 @@ router.get('/balance', authenticate, getBalance);
 // @access  Private
 router.get('/transactions', authenticate, getTransactions);
 
+router.post('/deposit', authenticate, createDeposit);
+
 
 // router.post('/deposit', authenticate, createDeposit);
 
