@@ -1,48 +1,37 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Currency from '../models/Currency.js';
 import Transaction from '../models/Transaction.js';
 
 
 export const getBalance = async (req, res) => {
   try {
-    // Convert req.user.id to ObjectId
-    const userId = new mongoose.Types.ObjectId(req.user.id);
-    
-    const user = await User.findById(userId)
-      .select('accountId currency verification balance')
-      .lean();
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+    const baseCurrency = await Currency.findOne({ isBase: true, status: 'Enabled' });
+    const targetCurrency = await Currency.findOne({ code: user.currency, status: 'Enabled' });
+
+    if (!baseCurrency || !targetCurrency) {
+      return res.status(500).json({ message: 'Currency conversion error' });
     }
-    
-    // Debug log to verify balance
-    console.log(`[DEBUG] User ${userId} balance: ${user.balance}`);
-    
+
+    // Convert balance
+    const baseNormalized = user.balance / baseCurrency.rate;
+    const convertedBalance = baseNormalized * targetCurrency.rate;
+
     res.json({
       success: true,
       data: {
-        balance: user.balance,
-        currency: user.currency || 'NGN',
-        accountId: user.accountId,
-        verificationStatus: user.verification
+        balance: convertedBalance,
+        currency: targetCurrency.code,
+        rawBalance: user.balance, // optional
+        rate: targetCurrency.rate
       }
     });
-
   } catch (err) {
-    console.error('Balance fetch error:', {
-      message: err.message,
-      userId: req.user.id,
-      stack: err.stack
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch balance',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    console.error('Get balance error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

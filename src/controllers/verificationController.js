@@ -495,7 +495,7 @@ export const getCurrentUser = async (req, res) => {
       accountId: user.accountId,
       faceImage: user.verification.faceImage,
       verification: user.verification,
-      phoneNumber: user.phoneNumber,
+      phoneNumber: user.mobile,
       email: user.email,
       country: user.country,
       gender: user.gender,
