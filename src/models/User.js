@@ -176,11 +176,6 @@ const userSchema = new mongoose.Schema({
   //   metadata: { type: Object }
   // }],
   tradingEnabled: { type: Boolean, default: false },
-  tradingSignal: { 
-    type: String, 
-    enum: ['buy', 'sell', 'hold'], 
-    default: 'hold' 
-  },
   tradingSignalStrength: {
     type: Number,
     default: 100,   // ← set to 100%

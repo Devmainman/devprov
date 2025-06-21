@@ -861,42 +861,45 @@ export const toggleTradeStatus = async (req, res) => {
     }
   };
 
-export const updateUserSignal = async (req, res) => {
+  export const updateUserSignal = async (req, res) => {
     try {
-        const { signal } = req.body;
+        const { strength } = req.body;
         const user = await User.findById(req.params.id);
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
             });
         }
-        
-        if (!signal || !['buy', 'sell', 'hold'].includes(signal)) {
+
+        const parsedStrength = parseInt(strength);
+        if (isNaN(parsedStrength) || parsedStrength < 0 || parsedStrength > 100) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid signal (must be buy, sell, or hold)'
+                message: 'Signal strength must be a number between 0 and 100'
             });
         }
-        
-        user.tradingSignal = signal;
+
+        user.tradingSignalStrength = parsedStrength;
         user.tradingSignalUpdatedAt = new Date();
         await user.save();
-        
+
         res.json({
             success: true,
             user: transformUserForFrontend(user),
-            message: `Signal updated to ${signal} successfully`
+            message: `Signal strength updated to ${parsedStrength}% successfully`
         });
     } catch (err) {
         console.error('Admin updateUserSignal error:', err);
         res.status(500).json({ 
             success: false,
-            message: 'Server error updating signal' 
+            message: 'Server error updating signal strength' 
         });
     }
 };
+
+
 
 export const sendMessageToUser = async (req, res) => {
     try {
