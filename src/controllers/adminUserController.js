@@ -77,7 +77,24 @@ const transformRequestToDB = (data) => {
     
     return transformed;
 };
-
+// adminUserController.js
+export const getSimpleUserList = async (req, res) => {
+    try {
+      const users = await User.find({}, 'firstName lastName accountId email');
+  
+      const formattedUsers = users.map(user => ({
+        accountId: user.accountId,
+        email: user.email,
+        fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+      }));
+  
+      res.json({ success: true, users: formattedUsers });
+    } catch (error) {
+      console.error('Error fetching user list:', error);
+      res.status(500).json({ success: false, message: 'Server error' });
+    }
+  };
+  
 export const getUsers = async (req, res) => {
     try {
         const { search = '', status, page = 1, limit = 10 } = req.query;

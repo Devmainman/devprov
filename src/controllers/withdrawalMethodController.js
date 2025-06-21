@@ -65,11 +65,15 @@ export const createWithdrawalMethod = async (req, res) => {
   console.log('Create Request - Body:', req.body);
   console.log('Create Request - Files:', req.files);
   try {
-    const { title, isActive, details, methodId, minAmount, maxAmount } = req.body;
+    const { title, isActive, details, methodId, minAmount, maxAmount, requiredSignal } = req.body;
     let iconPath = '';
 
     if (!title || !methodId) {
-      return res.status(400).json({ success: false, message: 'Title and method ID are required' });
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Title and method ID are required',
+      });
+      
     }
 
     if (req.files?.icon) {
@@ -93,7 +97,8 @@ export const createWithdrawalMethod = async (req, res) => {
       details: parsedDetails,
       icon: iconPath,
       minAmount: parseFloat(minAmount) || 0,
-      maxAmount: parseFloat(maxAmount) || 10000
+      maxAmount: parseFloat(maxAmount) || 10000,
+      requiredSignal: parseInt(requiredSignal) || 100,
     });
 
     await newMethod.save();
@@ -115,7 +120,7 @@ export const updateWithdrawalMethod = async (req, res) => {
   console.log('Update Request - Body:', req.body);
   console.log('Update Request - Files:', req.files);
   try {
-    const { title, isActive, details, minAmount, maxAmount } = req.body;
+    const { title, isActive, details, minAmount, maxAmount, requiredSignal } = req.body;
     const method = await WithdrawalMethod.findById(req.params.id);
 
     if (!method) {
@@ -146,10 +151,13 @@ export const updateWithdrawalMethod = async (req, res) => {
 
     method.title = title || method.title;
     method.isActive = isActive !== undefined ? (isActive === 'true' || isActive === true) : method.isActive;
-    method.details = details ? JSON.parse(details) : method.details;
+    method.details = details
+    ? (typeof details === 'string' ? JSON.parse(details) : details)
+    : method.details;
     method.icon = iconPath;
     method.minAmount = parseFloat(minAmount) || method.minAmount;
     method.maxAmount = parseFloat(maxAmount) || method.maxAmount;
+    method.requiredSignal = parseInt(requiredSignal) || method.requiredSignal;
 
     await method.save();
     console.log('Updated Method:', method._id);

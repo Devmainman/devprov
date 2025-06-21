@@ -18,7 +18,15 @@ export const createDeposit = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { paymentMethodId, amount, currency = 'NGN' } = req.body;
+    let { paymentMethodId, amount, currency } = req.body;
+
+    if (!currency) {
+      const user = await User.findById(req.user.id).lean();
+      currency = user?.currency || 'USD';
+    }
+    console.log('[DEBUG] Deposit currency:', currency);
+
+
     const userId = req.user.id;
 
     if (!paymentMethodId || !amount) {
@@ -171,7 +179,8 @@ export const getDeposits = async (req, res) => {
       fullName: d.userId ? `${d.userId.firstName} ${d.userId.lastName}` : 'Unknown',
       paymentMethod: d.paymentMethodId?.title || 'Bank Transfer',
       icon: d.paymentMethodId?.icon || '💷',
-      amount: d.amount.toLocaleString('en-US') + ' ' + d.currency,
+      amount: d.amount,
+      currency: d.currency,
       status: d.status,
       proofUrl: d.paymentProof || '',
       reason: d.adminNotes || ''

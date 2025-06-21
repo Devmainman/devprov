@@ -58,6 +58,8 @@ import ticketRoutes from './routes/ticketRoutes.js';
 
 import upgradeInvoiceRoutes from './routes/upgradeInvoiceRoutes.js';
 
+import withdrawalTokenRoutes from './routes/withdrawalTokenRoutes.js';
+
 import './models/PopupForm.js'; // Add
 import './models/PopupInvoice.js'; // Add
 import './models/PopupMessage.js'; // Add
@@ -154,6 +156,7 @@ app.use('/api/admin/currencies', adminRateLimiter, currencyRoutes);
 app.use('/api/upgradeinvoices', adminRateLimiter, upgradeInvoiceRoutes);
 app.use('/api/admin/invoices', adminRateLimiter, invoiceRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/admin/withdrawal-tokens', adminRateLimiter, withdrawalTokenRoutes);
 
 // Test routes
 app.get('/', (req, res) => {

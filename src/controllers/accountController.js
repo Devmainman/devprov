@@ -35,6 +35,23 @@ export const getBalance = async (req, res) => {
   }
 };
 
+// routes/accountRoutes.js or controller file
+export const getSignalStrength = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('tradingSignalStrength');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.json({ success: true, signalStrength: user.tradingSignalStrength });
+  } catch (err) {
+    console.error('Error fetching signal strength:', err);
+    return res.status(500).json({ success: false, message: 'Failed to get signal strength' });
+  }
+};
+
+
 export const getTransactions = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = '' } = req.query;

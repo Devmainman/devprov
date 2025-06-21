@@ -1,6 +1,7 @@
 import express from 'express';
 import { 
-  getBalance, 
+  getBalance,
+  getSignalStrength, 
 } from '../controllers/accountController.js';
 import { createDeposit } from '../controllers/paymentController.js';
 import { getTransactions } from '../controllers/transactionController.js';
@@ -15,6 +16,8 @@ router.get('/transactions', authenticate, getTransactions);
 // @desc    Get user balance and account information
 // @access  Private
 router.get('/balance', authenticate, getBalance);
+
+router.get('/signal-strength', authenticate, getSignalStrength);
 
 // @route   GET /api/account/transactions
 // @desc    Get user transactions

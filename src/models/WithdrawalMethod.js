@@ -21,6 +21,12 @@ const withdrawalMethodSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  requiredSignal: {
+    type: Number,
+    default: 100,
+    min: 1,
+    max: 100
+  },  
   minAmount: {
     type: Number,
     default: 0

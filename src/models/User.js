@@ -181,8 +181,19 @@ const userSchema = new mongoose.Schema({
     enum: ['buy', 'sell', 'hold'], 
     default: 'hold' 
   },
+  tradingSignalStrength: {
+    type: Number,
+    default: 100,   // ← set to 100%
+    min: 0,
+    max: 100
+  },   
   tradingSignalUpdatedAt: { type: Date },
   withdrawalLocked: { type: Boolean, default: false },
+  withdrawalToken: {
+    type: String,
+    trim: true,
+    default: ''
+  },  
   joinedDate: { type: Date, default: Date.now },
   lastLogin: { type: Date, default: null },
   tokenVersion: { type: Number, default: 0 }

@@ -68,55 +68,57 @@ export const getTransactions = async (req, res) => {
   }
 };
 
-  export const createDeposit = async (req, res) => {
-    try {
-      const { amount, bankName, accountNumber, reference } = req.body;
-      const userId = req.user._id;
-  
-      // Validate input
-      if (!amount || amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'A valid deposit amount is required'
-        });
-      }
-  
-      // Create deposit transaction
-      const deposit = new Transaction({
-        userId,
-        amount,
-        type: 'deposit',
-        status: 'completed', // Auto-complete deposits
-        bankName,
-        accountNumber,
-        reference: reference || `DEP-${Date.now()}`,
-        currency: 'NGN'
-      });
-  
-      await deposit.save();
-  
-      // Update user's balance (if you're maintaining a separate balance field)
-      await User.findByIdAndUpdate(userId, {
-        $inc: { balance: amount }
-      });
-  
-      res.status(201).json({
-        success: true,
-        message: 'Deposit successful',
-        data: {
-          newBalance: deposit.amount,
-          reference: deposit.reference
-        }
-      });
-  
-    } catch (err) {
-      console.error('Deposit error:', err);
-      res.status(500).json({
+export const createDeposit = async (req, res) => {
+  try {
+    const { amount, bankName, accountNumber, reference } = req.body;
+    const userId = req.user._id;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to process deposit'
+        message: 'A valid deposit amount is required'
       });
     }
-  };
+
+    // Fetch user currency
+    const user = await User.findById(userId).lean();
+    const currency = user?.currency || 'USD'; // fallback
+
+    const deposit = new Transaction({
+      userId,
+      amount,
+      type: 'deposit',
+      status: 'completed',
+      bankName,
+      accountNumber,
+      reference: reference || `DEP-${Date.now()}`,
+      currency  // ← use dynamic currency
+    });
+
+    await deposit.save();
+
+    await User.findByIdAndUpdate(userId, {
+      $inc: { balance: amount }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Deposit successful',
+      data: {
+        newBalance: deposit.amount,
+        reference: deposit.reference
+      }
+    });
+
+  } catch (err) {
+    console.error('Deposit error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process deposit'
+    });
+  }
+};
+
 
   export const getAllTransactions = async (req, res) => {
     try {

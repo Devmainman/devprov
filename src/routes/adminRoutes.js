@@ -23,6 +23,7 @@ import {
   toggleTradeStatus,
   updateUserSignal,
   sendMessageToUser,
+  getSimpleUserList,
 } from '../controllers/adminUserController.js';
 // main
 import { getBrowsingHistory } from '../controllers/browsingHistoryController.js';
@@ -63,6 +64,7 @@ router.use(isAdmin);
 
 // User management routes
 router.get('/users', getUsers);
+router.get('/users/simple-list', getSimpleUserList);
 router.get('/users/:id', getUser);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
