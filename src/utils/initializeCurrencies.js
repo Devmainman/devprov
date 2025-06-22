@@ -1,5 +1,4 @@
 import Currency from '../models/Currency.js';
-
 const currencies = [
   { title: 'US Dollar', code: 'USD', rate: 1, isBase: true },
   { title: 'Euro', code: 'EUR', rate: 0.91 },

@@ -5,9 +5,7 @@ import Assignment from '../models/Assignment.js';
 import Package from '../models/Package.js';
 import Setting from '../models/Setting.js';
 import jwt from 'jsonwebtoken';
-import Currency from '../models/Currency.js';
-
- 
+import Currency from '../models/Currency.js'; 
 
 const transformUserForFrontend = (user) => {
     if (!user) return null;
@@ -31,10 +29,10 @@ const transformUserForFrontend = (user) => {
         email: user.email,
         fullName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Not set',
         country: user.country || user.address?.country || 'Not set',
-        currency: user.currency || 'USD',
+        currency: user.currency, // REMOVED DEFAULT USD
         accountType: user.accountType || 'Basic',
         walletBalance: typeof user.balance === 'number' ? user.balance : 0,
-        mobile: user.mobile, // ADD THIS LINE
+        mobile: user.mobile,
         status: user.status || 'Active',
         joinedDate: user.joinedDate,
         firstName: user.firstName,
@@ -56,7 +54,7 @@ const transformRequestToDB = (data) => {
     const phoneValue = data.phoneNumber ?? data.mobile;
     
     if (phoneValue !== undefined) {
-        const cleaned = phoneValue.replace(/\D/g, ''); // remove all non-digits
+        const cleaned = phoneValue.replace(/\D/g, '');
     
         if (!cleaned) {
             transformed.mobile = '';
@@ -69,14 +67,13 @@ const transformRequestToDB = (data) => {
         }
     }
     
-    
     delete transformed.phoneNumber;
     delete transformed._rawMobile;
     delete transformed.balance; // Prevent overwriting balance during user update
-
     
     return transformed;
 };
+
 // adminUserController.js
 export const getSimpleUserList = async (req, res) => {
     try {
@@ -688,9 +685,11 @@ export const requestPhoneVerification = async (req, res) => {
 
 export const changeUserCurrency = async (req, res) => {
     try {
-        const { currency } = req.body;
-        const user = await User.findById(req.params.id);
-        
+        const { currency: newCurrencyCode } = req.body;
+        const userId = req.params.id;
+
+        // 1. Fetch user and validate
+        const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -698,43 +697,87 @@ export const changeUserCurrency = async (req, res) => {
             });
         }
 
-        // Validate currency against database
-        const currencyExists = await Currency.exists({ 
-            code: currency, 
+        // 2. Validate new currency exists and is enabled
+        const newCurrency = await Currency.findOne({ 
+            code: newCurrencyCode, 
             status: 'Enabled' 
         });
         
-        if (!currencyExists) {
-            const enabledCurrencies = await Currency.find({ status: 'Enabled' }).select('code');
-            const validCurrencyCodes = enabledCurrencies.map(c => c.code);
-            
+        if (!newCurrency) {
             return res.status(400).json({
                 success: false,
-                message: `Invalid currency. Must be one of: ${validCurrencyCodes.join(', ')}`
+                message: 'Invalid or disabled currency'
             });
         }
 
-        if (user.currency === currency) {
+        // 3. Check if currency is actually changing
+        if (user.currency === newCurrencyCode) {
             return res.status(400).json({
                 success: false,
                 message: 'User already has this currency'
             });
         }
-        
-        const oldCurrency = user.currency;
-        user.currency = currency;
-        await user.save();
-        
+
+        // 4. Get both currencies' rates relative to base (USD)
+        const oldCurrency = await Currency.findOne({ code: user.currency });
+        if (!oldCurrency) {
+            return res.status(400).json({
+                success: false,
+                message: 'Current user currency not found in system'
+            });
+        }
+
+        // 5. Calculate conversion rate (new/old)
+        // Since both are relative to USD, conversion is (newRate/oldRate)
+        const conversionRate = newCurrency.rate / oldCurrency.rate;
+        const newBalance = user.balance * conversionRate;
+
+        // 6. Update user with new currency and converted balance
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { 
+                currency: newCurrencyCode,
+                balance: newBalance 
+            },
+            { new: true }
+        );
+
+        // 7. Create audit transaction
+        await Transaction.create({
+            userId: userId,
+            amount: user.balance,
+            newAmount: newBalance,
+            currency: user.currency,
+            newCurrency: newCurrencyCode,
+            type: 'currency_conversion',
+            status: 'completed',
+            reference: `CURRCONV-${Date.now()}`,
+            description: `Converted ${user.balance} ${user.currency} to ${newBalance} ${newCurrencyCode} at rate ${conversionRate}`,
+            metadata: {
+                oldRate: oldCurrency.rate,
+                newRate: newCurrency.rate,
+            }
+        });
+
         res.json({
             success: true,
-            user: transformUserForFrontend(user),
-            message: 'Currency changed successfully'
+            user: transformUserForFrontend(updatedUser),
+            conversion: {
+                oldAmount: user.balance,
+                oldCurrency: user.currency,
+                newAmount: newBalance,
+                newCurrency: newCurrencyCode,
+                rate: conversionRate
+            },
+            message: `Currency changed from ${user.currency} to ${newCurrencyCode}`
         });
+
     } catch (err) {
         console.error('Admin changeUserCurrency error:', err);
         res.status(500).json({ 
             success: false,
-            message: 'Server error changing currency' 
+            message: 'Server error changing currency',
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 };

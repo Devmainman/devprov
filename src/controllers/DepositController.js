@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { v4 as uuidv4 } from 'uuid'; // Add this import
+import { v4 as uuidv4 } from 'uuid';
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -18,16 +18,21 @@ export const createDeposit = async (req, res) => {
   session.startTransaction();
 
   try {
-    let { paymentMethodId, amount, currency } = req.body;
-
-    if (!currency) {
-      const user = await User.findById(req.user.id).lean();
-      currency = user?.currency || 'USD';
-    }
-    console.log('[DEBUG] Deposit currency:', currency);
-
-
+    const { paymentMethodId, amount } = req.body;
     const userId = req.user.id;
+
+    // Get user with their currency
+    const user = await User.findById(userId).session(session);
+    if (!user) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const currency = user.currency; // Always use user's currency
 
     if (!paymentMethodId || !amount) {
       await session.abortTransaction();
@@ -54,14 +59,13 @@ export const createDeposit = async (req, res) => {
 
     await paymentProof.mv(uploadPath);
 
-    // Generate unique reference using UUID
     const transactionReference = `DEP-${uuidv4().replace(/-/g, '').slice(0, 12)}`;
 
     const deposit = new Deposit({
       userId,
       paymentMethodId,
       amount: parseFloat(amount),
-      currency,
+      currency, // Using user's currency
       paymentProof: `/payment-proofs/${fileName}`,
       transactionReference,
       status: 'pending'
@@ -70,9 +74,9 @@ export const createDeposit = async (req, res) => {
     await deposit.save({ session });
 
     await createTransaction({
-      userId: userId,
+      userId,
       amount: parseFloat(amount),
-      currency: currency,
+      currency, // Using user's currency
       type: 'deposit',
       status: 'pending',
       reference: transactionReference
