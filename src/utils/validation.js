@@ -1,29 +1,28 @@
 export const validateEmail = (email) => {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(String(email).toLowerCase());
-  };
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(String(email).toLowerCase());
+};
+
+export const validatePassword = (password) => {
+  return password.length >= 6;
+};
   
-  export const validatePassword = (password) => {
-    return password.length >= 6;
-  };
+export const validateMobileNumber = (mobile) => {
+  if (!mobile || mobile.trim() === '') return true; // Optional field
+  return /^\+[1-9]\d{1,14}$/.test(mobile); // E.164 format
+};
+
+export const validateUserInput = (email, password) => {
+  if (!validateEmail(email)) {
+    return { valid: false, message: 'Invalid email format' };
+  }
   
-  export const validatePhoneNumber = (phone) => {
-    // Basic international phone number validation
-    const re = /^\+?[1-9]\d{1,14}$/; // E.164 format
-    return re.test(phone);
-  };
+  if (!validatePassword(password)) {
+    return { valid: false, message: 'Password must be at least 6 characters' };
+  }
   
-  export const validateUserInput = (email, password) => {
-    if (!validateEmail(email)) {
-      return { valid: false, message: 'Invalid email format' };
-    }
-    
-    if (!validatePassword(password)) {
-      return { valid: false, message: 'Password must be at least 6 characters' };
-    }
-    
-    return { valid: true };
-  };
+  return { valid: true };
+};
   
   export const validateAdminInput = (email, password) => {
     if (!validateEmail(email)) {
@@ -39,7 +38,7 @@ export const validateEmail = (email) => {
   
   // New validation functions for verification flow
   export const validateProfileData = (data) => {
-    const { firstName, lastName, phoneNumber, country, gender, currency } = data;
+    const { firstName, lastName, mobile, country, gender, currency } = data; // Changed phoneNumber to mobile
     const errors = {};
   
     if (!firstName || firstName.trim().length < 2) {
@@ -50,8 +49,8 @@ export const validateEmail = (email) => {
       errors.lastName = 'Last name must be at least 2 characters';
     }
   
-    if (!validatePhoneNumber(phoneNumber)) {
-      errors.phoneNumber = 'Invalid phone number format';
+    if (!validateMobileNumber(mobile)) {
+      errors.mobile = 'Please enter a valid international phone number (e.g., +1234567890)'; // Updated field name
     }
   
     if (!country) {
@@ -69,6 +68,19 @@ export const validateEmail = (email) => {
     return {
       valid: Object.keys(errors).length === 0,
       errors
+    };
+  };
+  
+  // Utility function to transform frontend data to backend format
+  export const transformProfileData = (data) => {
+    return {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      mobile: data.phoneNumber, // Transform phoneNumber to mobile
+      country: data.country,
+      gender: data.gender,
+      currency: data.currency
     };
   };
   

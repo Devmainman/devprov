@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Balance cannot be negative']
   },
+  // Change from Nigerian-specific validation to international format
   mobile: {  
     type: String,
     trim: true,
@@ -36,10 +37,10 @@ const userSchema = new mongoose.Schema({
     validate: {
       validator: function(v) {
         if (!v || v.trim() === '') return true;
-        const cleaned = v.replace(/\D/g, '');
-        return /^(?:234|0)[7-9][01]\d{8}$/.test(cleaned);
+        // Basic international phone validation (E.164 format)
+        return /^\+[1-9]\d{1,14}$/.test(v);
       },
-      message: props => `${props.value} is not a valid Nigerian phone number!`
+      message: props => `${props.value} is not a valid international phone number!`
     }
   },
   country: { type: String, trim: true },

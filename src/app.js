@@ -105,7 +105,10 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(fileUpload({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  abortOnLimit: true
+  abortOnLimit: true,
+  useTempFiles: false,
+  parseNested: true,
+  createParentPath: true
 }));
 app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
 app.use('/icons', express.static(path.join(__dirname, 'Uploads/icons')));

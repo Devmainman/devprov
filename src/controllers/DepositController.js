@@ -66,7 +66,7 @@ export const createDeposit = async (req, res) => {
       paymentMethodId,
       amount: parseFloat(amount),
       currency, // Using user's currency
-      paymentProof: `/payment-proofs/${fileName}`,
+      paymentProof: `/Uploads/payment-proofs/${fileName}`,
       transactionReference,
       status: 'pending'
     });
@@ -84,6 +84,8 @@ export const createDeposit = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    console.log('Payment proof saved at:', `/Uploads/payment-proofs/${fileName}`);
 
     res.status(201).json({
       success: true,
