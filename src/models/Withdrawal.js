@@ -16,6 +16,11 @@ const withdrawalSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  currency: {
+    type: String,
+    required: true, // Now required
+    trim: true
+  },
   status: {
     type: String,
     enum: ['pending', 'processing', 'completed', 'rejected'],

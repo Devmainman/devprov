@@ -10,14 +10,23 @@ export const getTransactions = async (req, res) => {
     const skip = (page - 1) * limit;
     const userId = req.user.id;
 
-   // Fixed: use 'user' instead of 'userId' for withdrawals
-   const [deposits, withdrawals, totalDeposits, totalWithdrawals] = await Promise.all([
-    Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    Withdrawal.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), // ✅ Fixed
-    Deposit.countDocuments({ userId }),
-    Withdrawal.countDocuments({ user: userId }) // ✅ Fixed
-  ]);
-
+    // Fetch deposits, withdrawals, and admin credits
+    const [deposits, withdrawals, adminCredits, totalDeposits, totalWithdrawals, totalAdminCredits] = await Promise.all([
+      Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Withdrawal.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.find({ 
+        userId, 
+        type: 'admin_credit',
+        status: 'completed' // Only include completed admin credits
+      }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Deposit.countDocuments({ userId }),
+      Withdrawal.countDocuments({ user: userId }),
+      Transaction.countDocuments({ 
+        userId, 
+        type: 'admin_credit',
+        status: 'completed'
+      })
+    ]);
 
     // Combine and format transactions
     const combinedTransactions = [
@@ -38,10 +47,20 @@ export const getTransactions = async (req, res) => {
         status: w.status,
         reference: w._id.toString(),
         createdAt: w.createdAt
+      })),
+      ...adminCredits.map(ac => ({
+        id: ac._id,
+        type: 'deposit', // Display as deposit
+        amount: ac.amount,
+        currency: ac.currency,
+        status: ac.status,
+        reference: ac.reference || `ADMIN-CREDIT-${ac._id.toString().slice(-6)}`,
+        createdAt: ac.createdAt,
+        isAdminCredit: true // Additional flag to identify admin credits if needed
       }))
     ].sort((a, b) => b.createdAt - a.createdAt);
 
-    const total = totalDeposits + totalWithdrawals;
+    const total = totalDeposits + totalWithdrawals + totalAdminCredits;
 
     res.json({
       success: true,
@@ -82,7 +101,7 @@ export const createDeposit = async (req, res) => {
 
     // Fetch user currency
     const user = await User.findById(userId).lean();
-    const currency = user?.currency || 'USD'; // fallback
+    const currency = user?.currency; // fallback
 
     const deposit = new Transaction({
       userId,

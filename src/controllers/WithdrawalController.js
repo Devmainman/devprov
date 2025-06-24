@@ -102,6 +102,7 @@ export const createWithdrawal = async (req, res) => {
       user: userId,
       method: method._id,
       amount,
+      currency: user.currency,
       details,
       status: 'pending',
       transactionReference
@@ -125,7 +126,7 @@ export const createWithdrawal = async (req, res) => {
     const transaction = new Transaction({
       userId,
       amount,
-      currency: user.currency || 'NGN',
+      currency: user.currency,
       type: 'withdrawal',
       status: 'pending',
       reference: transactionReference,
