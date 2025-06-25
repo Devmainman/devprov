@@ -69,11 +69,28 @@ export const createWithdrawalMethod = async (req, res) => {
     let iconPath = '';
 
     if (!title || !methodId) {
-      res.status(400).json({
+      return res.status(400).json({
         success: false,
-        message: error.message || 'Title and method ID are required',
+        message: 'Title and method ID are required',
       });
-      
+    }
+    
+
+    const parsedMin = parseFloat(minAmount);
+    const parsedMax = parseFloat(maxAmount);
+
+    // Validation for min/max
+    if (isNaN(parsedMin) || isNaN(parsedMax)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Min and Max amount must be valid numbers',
+      });
+    }
+    if (parsedMin > parsedMax) {
+      return res.status(400).json({
+        success: false,
+        message: 'Minimum amount cannot be greater than maximum amount',
+      });
     }
 
     if (req.files?.icon) {
@@ -96,8 +113,8 @@ export const createWithdrawalMethod = async (req, res) => {
       isActive: isActive === 'true' || isActive === true,
       details: parsedDetails,
       icon: iconPath,
-      minAmount: parseFloat(minAmount) || 0,
-      maxAmount: parseFloat(maxAmount) || 10000,
+      minAmount: parsedMin,
+      maxAmount: parsedMax,
       requiredSignal: parseInt(requiredSignal) || 100,
     });
 
@@ -119,6 +136,7 @@ export const updateWithdrawalMethod = async (req, res) => {
   console.log('Update Request - Content-Type:', req.headers['content-type']);
   console.log('Update Request - Body:', req.body);
   console.log('Update Request - Files:', req.files);
+
   try {
     const { title, isActive, details, minAmount, maxAmount, requiredSignal } = req.body;
     const method = await WithdrawalMethod.findById(req.params.id);
@@ -127,6 +145,18 @@ export const updateWithdrawalMethod = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Withdrawal method not found' });
     }
 
+    // Validate min and max amounts if provided
+    const parsedMin = minAmount !== undefined ? parseFloat(minAmount) : undefined;
+    const parsedMax = maxAmount !== undefined ? parseFloat(maxAmount) : undefined;
+
+    if (!isNaN(parsedMin) && !isNaN(parsedMax) && parsedMin > parsedMax) {
+      return res.status(400).json({
+        success: false,
+        message: 'Minimum amount cannot be greater than maximum amount',
+      });
+    }
+
+    // Handle icon upload
     let iconPath = method.icon;
     if (req.files?.icon) {
       const icon = req.files.icon;
@@ -136,6 +166,8 @@ export const updateWithdrawalMethod = async (req, res) => {
       const uploadPath = path.join(iconsDir, fileName);
 
       console.log('Attempting to save icon to:', uploadPath);
+
+      // Delete old icon if exists
       if (method.icon) {
         const oldIconPath = path.join(__dirname, '..', 'Uploads', method.icon);
         if (fs.existsSync(oldIconPath)) {
@@ -149,28 +181,31 @@ export const updateWithdrawalMethod = async (req, res) => {
       console.log('New icon uploaded:', iconPath);
     }
 
-    method.title = title || method.title;
-    method.isActive = isActive !== undefined ? (isActive === 'true' || isActive === true) : method.isActive;
-    method.details = details
-    ? (typeof details === 'string' ? JSON.parse(details) : details)
-    : method.details;
+    // Apply updates safely
+    if (title !== undefined) method.title = title;
+    if (isActive !== undefined) method.isActive = (isActive === 'true' || isActive === true);
+    if (details !== undefined) {
+      method.details = typeof details === 'string' ? JSON.parse(details) : details;
+    }
+    if (!isNaN(parsedMin)) method.minAmount = parsedMin;
+    if (!isNaN(parsedMax)) method.maxAmount = parsedMax;
+    if (!isNaN(parseInt(requiredSignal))) method.requiredSignal = parseInt(requiredSignal);
     method.icon = iconPath;
-    method.minAmount = parseFloat(minAmount) || method.minAmount;
-    method.maxAmount = parseFloat(maxAmount) || method.maxAmount;
-    method.requiredSignal = parseInt(requiredSignal) || method.requiredSignal;
 
     await method.save();
     console.log('Updated Method:', method._id);
     res.json({ success: true, data: method });
+
   } catch (err) {
     console.error('Update withdrawal method error:', err.message);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Error updating withdrawal method',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
 };
+
 
 // Toggle withdrawal method status
 export const toggleMethodStatus = async (req, res) => {

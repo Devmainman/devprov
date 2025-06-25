@@ -29,11 +29,12 @@ const withdrawalMethodSchema = new mongoose.Schema({
   },  
   minAmount: {
     type: Number,
-    default: 0
+    required: true,
+    min: 0
   },
   maxAmount: {
     type: Number,
-    default: 10000
+    required: true
   },
   details: [{
     label: {
