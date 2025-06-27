@@ -1,4 +1,5 @@
 import Package from '../models/Package.js';
+import Setting from '../models/Setting.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
@@ -27,6 +28,11 @@ const handleIconUpload = (req) => {
   });
   
   return `/uploads/icons/${icon.name}`;
+};
+
+const getDefaultCurrency = async () => {
+  const setting = await Setting.findOne().lean();
+  return setting?.defaultCurrency || 'USD';
 };
 
 export const createPackage = async (req, res) => {
@@ -77,7 +83,7 @@ export const createPackage = async (req, res) => {
     const newPackage = new Package({
       name,
       icon: iconPath,
-      currency: currency || 'USD',
+      currency: await getDefaultCurrency(),
       amount: parseFloat(amount),
       status: status || 'Active',
       benefits: Array.isArray(parsedBenefits) 
@@ -171,7 +177,7 @@ export const updatePackage = async (req, res) => {
 
     const updateData = {
       name,
-      currency: currency || 'USD',
+      currency: await getDefaultCurrency(),
       amount: parseFloat(amount),
       status: status || 'Active',
       benefits: Array.isArray(parsedBenefits) 

@@ -1,4 +1,7 @@
+import Currency from '../models/Currency.js';
 import WithdrawalMethod from '../models/WithdrawalMethod.js';
+import User from '../models/User.js';
+import Setting from '../models/Setting.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -23,6 +26,12 @@ const ensureIconsDirectory = () => {
   return iconsDir;
 };
 
+const getDefaultCurrency = async () => {
+  const setting = await Setting.findOne().lean();
+  return setting?.defaultCurrency || 'USD'; // Fallback if not set
+};
+
+
 // Get all withdrawal methods (admin)
 export const getWithdrawalMethods = async (req, res) => {
   console.log('getWithdrawalMethods Controller Hit');
@@ -41,24 +50,59 @@ export const getWithdrawalMethods = async (req, res) => {
 };
 
 // Get active withdrawal methods (public)
+
 export const getActiveWithdrawalMethods = async (req, res) => {
-  console.log('getActiveWithdrawalMethods Controller Hit');
   try {
+    const defaultCurrencyCode = await getDefaultCurrency();
+
+    // ✅ Fetch user to get currency
+    const user = await User.findById(req.user.id).select('currency').lean();
+    if (!user || !user.currency) {
+      return res.status(400).json({
+        success: false,
+        message: 'User currency not found in database.',
+      });
+    }
+
+    const userCurrencyCode = user.currency;
+
+    const [defaultCurrency, userCurrency] = await Promise.all([
+      Currency.findOne({ code: defaultCurrencyCode }).lean(),
+      Currency.findOne({ code: userCurrencyCode }).lean()
+    ]);
+
+    if (!defaultCurrency || !userCurrency) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid currency configuration.',
+      });
+    }
+
+    const conversionRate = userCurrency.rate / defaultCurrency.rate;
+
     const methods = await WithdrawalMethod.find({ isActive: true })
-      .select('_id methodId title icon isActive details minAmount maxAmount')
+      .select('_id methodId title icon isActive details minAmount maxAmount currency')
       .sort({ createdAt: -1 })
       .lean();
-    console.log('Fetched Public Methods:', methods.length);
-    res.json(methods);
+
+    const convertedMethods = methods.map(method => ({
+      ...method,
+      currency: userCurrency.code,
+      minAmount: parseFloat((method.minAmount * conversionRate).toFixed(2)),
+      maxAmount: parseFloat((method.maxAmount * conversionRate).toFixed(2)),
+    }));
+
+    res.json({ success: true, data: convertedMethods });
   } catch (err) {
-    console.error('Public withdrawal methods error:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching active withdrawal methods',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    console.error('getActiveWithdrawalMethods error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to load active withdrawal methods.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
 };
+
 
 // Create new withdrawal method
 export const createWithdrawalMethod = async (req, res) => {
@@ -107,6 +151,7 @@ export const createWithdrawalMethod = async (req, res) => {
     }
 
     const parsedDetails = details ? JSON.parse(details) : [];
+    const currency = await getDefaultCurrency(); // get currency from settings
     const newMethod = new WithdrawalMethod({
       methodId,
       title,
@@ -116,6 +161,7 @@ export const createWithdrawalMethod = async (req, res) => {
       minAmount: parsedMin,
       maxAmount: parsedMax,
       requiredSignal: parseInt(requiredSignal) || 100,
+      currency,
     });
 
     await newMethod.save();
@@ -191,6 +237,10 @@ export const updateWithdrawalMethod = async (req, res) => {
     if (!isNaN(parsedMax)) method.maxAmount = parsedMax;
     if (!isNaN(parseInt(requiredSignal))) method.requiredSignal = parseInt(requiredSignal);
     method.icon = iconPath;
+
+    if (!method.currency) {
+      method.currency = await getDefaultCurrency(); // fallback if it wasn't set before
+    }
 
     await method.save();
     console.log('Updated Method:', method._id);

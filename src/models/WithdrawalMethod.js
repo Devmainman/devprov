@@ -32,6 +32,11 @@ const withdrawalMethodSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  currency: {
+    type: String,
+    required: true,
+  },
+  
   maxAmount: {
     type: Number,
     required: true
