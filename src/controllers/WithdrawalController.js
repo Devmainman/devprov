@@ -67,38 +67,14 @@ export const createWithdrawal = async (req, res) => {
     }
 
     // 💰 Validate amount
-    // 🔄 Currency conversion (user.currency to method.currency)
-const convertCurrency = (amount, fromCurrency, toCurrency) => {
-  // Placeholder conversion rates — replace with dynamic or real-time API
-  const rates = {
-    USD: 1,
-    NGN: 1500,
-    EUR: 0.9,
-    // Add more as needed
-  };
-
-  const fromRate = rates[fromCurrency];
-  const toRate = rates[toCurrency];
-
-  if (!fromRate || !toRate) {
-    throw new Error(`Unsupported currency conversion from ${fromCurrency} to ${toCurrency}`);
-  }
-
-  const usdAmount = amount / fromRate;
-  return usdAmount * toRate;
-};
-
-const convertedAmount = convertCurrency(amount, user.currency, method.currency);
-
-if (convertedAmount < method.minAmount || convertedAmount > method.maxAmount) {
-  await session.abortTransaction();
-  session.endSession();
-  return res.status(400).json({
-    success: false,
-    message: `Amount must be between ${method.minAmount} and ${method.maxAmount} ${method.currency}`
-  });
-}
-
+    if (amount < method.minAmount || amount > method.maxAmount) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: `Amount must be between ${method.minAmount} and ${method.maxAmount}`
+      });
+    }
 
     if (user.balance < amount) {
       await session.abortTransaction();

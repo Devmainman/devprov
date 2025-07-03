@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import Setting from '../models/Setting.js';
 import mongoose from 'mongoose';
 
 // Get user's referral information
@@ -78,40 +79,60 @@ export const processReferral = async (referrerCode, newUserId) => {
   session.startTransaction();
   
   try {
-    // Find the referrer
+    // Find the referrer by code
     const referrer = await User.findOne({ 'referral.code': referrerCode }).session(session);
     if (!referrer) {
       throw new Error('Invalid referral code');
     }
 
-    // Find the new user
+    // Find the newly registered user
     const newUser = await User.findById(newUserId).session(session);
     if (!newUser) {
       throw new Error('New user not found');
     }
 
-    // Update both users
+    // Update the referrer’s referral list
     referrer.referral.referrals.push({
       userId: newUser._id,
       bonusEarned: 0
     });
     referrer.referral.totalReferrals += 1;
-    
+
+    // Link the new user to the referrer
     newUser.referral.referredBy = referrer._id;
 
+    // 🟡 Fetch referral bonus amount from global settings
+    const settings = await Setting.findOne().session(session);
+    const referralBonus = settings?.referralCommission || 0.1;
+
+    if (referralBonus > 0) {
+      referrer.referral.pendingBonus += referralBonus;
+      referrer.referral.totalEarned += referralBonus;
+
+      // Update bonusEarned for this referral record
+      const lastReferral = referrer.referral.referrals.find(
+        ref => ref.userId.toString() === newUser._id.toString()
+      );
+      if (lastReferral) {
+        lastReferral.bonusEarned = referralBonus;
+      }
+    }
+
+    // Save both documents
     await referrer.save({ session });
     await newUser.save({ session });
-    
+
     await session.commitTransaction();
     session.endSession();
 
-    return { success: true, referrerId: referrer._id };
+    return { success: true, referrerId: referrer._id, bonusAwarded: referralBonus };
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     throw error;
   }
 };
+
 
 // Award referral bonus
 export const awardReferralBonus = async (userId, amount) => {

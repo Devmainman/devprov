@@ -8,7 +8,7 @@ const settingSchema = new mongoose.Schema({
   currencyApiKey: { type: String, default: '' },
   currencyApiUrl: { type: String, default: 'http://api.exchangerate.host/convert' },
   currencyInterval: { type: String, default: 'Every Six Hours' },
-  defaultCurrency: { type: String, default: 'Bulgarian Lev (BGN)' },
+  defaultCurrency: { type: String, default: '' },
   adminEmail: { type: String, default: 'nojigpotal@gmail.com' },
   signalStrengthLimit: { type: String, default: '' },
   referralCommission: { type: Number, default: 0 },

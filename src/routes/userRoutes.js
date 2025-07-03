@@ -56,10 +56,19 @@ const parseFormData = (req, res, next) => {
 
 
 // User authentication routes
-router.post('/signup', signup);
+router.post('/signup', parseFormData, signup);
 router.post('/login', login);
 router.get('/me', authenticate, getCurrentUser);
 router.post('/change-password', authenticate, changePassword);
+
+router.post('/logout', authenticate, (req, res) => {
+  return res.json({
+    success: true,
+    message: 'Logged out'
+  });
+});
+
+
 
 // Popup routes
 router.get('/popups/active', authenticate, getActivePopup);

@@ -60,6 +60,8 @@ import upgradeInvoiceRoutes from './routes/upgradeInvoiceRoutes.js';
 
 import withdrawalTokenRoutes from './routes/withdrawalTokenRoutes.js';
 
+import publicSettingsRoutes from './routes/publicSettingsRoutes.js';
+
 import './models/PopupForm.js'; // Add
 import './models/PopupInvoice.js'; // Add
 import './models/PopupMessage.js'; // Add
@@ -151,7 +153,7 @@ app.use('/api/referrals', referralRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', popupFetchRoutes);
 app.use('/api/admin/verifications', adminRateLimiter, adminVerificationRoutes);
-app.use('/api', messageRoutes);
+app.use('/api/messages', messageRoutes);
 app.use('/api/admin/trading', adminRateLimiter, adminTradingRoutes);
 app.use('/api/admin/withdrawals', adminRateLimiter, adminWithdrawalRoutes);
 app.use('/api/admin/dashboard', adminRateLimiter, adminDashboardRoutes);
@@ -160,6 +162,8 @@ app.use('/api/upgradeinvoices', adminRateLimiter, upgradeInvoiceRoutes);
 app.use('/api/admin/invoices', adminRateLimiter, invoiceRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/admin/withdrawal-tokens', adminRateLimiter, withdrawalTokenRoutes);
+
+app.use('/api/public/settings', publicSettingsRoutes);
 
 // Test routes
 app.get('/', (req, res) => {

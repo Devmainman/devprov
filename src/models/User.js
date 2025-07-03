@@ -115,6 +115,10 @@ const userSchema = new mongoose.Schema({
     push: { type: Boolean, default: true },
     inApp: { type: Boolean, default: true }
   },
+  blockReason: {
+    type: String,
+    default: null
+  },  
   notifications: [{
     _id: false,
     id: { type: String, default: () => uuidv4() },

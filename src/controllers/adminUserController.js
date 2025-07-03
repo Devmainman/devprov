@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Message from '../models/Message.js'; 
 import Transaction from '../models/Transaction.js';
 import Assignment from '../models/Assignment.js';
 import Package from '../models/Package.js';
 import Setting from '../models/Setting.js';
 import jwt from 'jsonwebtoken';
 import Currency from '../models/Currency.js'; 
+import { sendNotification } from '../app.js';
 
 const transformUserForFrontend = (user) => {
     if (!user) return null;
@@ -32,7 +34,7 @@ const transformUserForFrontend = (user) => {
         currency: user.currency, // REMOVED DEFAULT USD
         accountType: user.accountType || 'Basic',
         walletBalance: typeof user.balance === 'number' ? user.balance : 0,
-        mobile: user.mobile,
+        mobile: formatPhone(user.mobile),
         status: user.status || 'Active',
         joinedDate: user.joinedDate,
         firstName: user.firstName,
@@ -57,7 +59,7 @@ const transformRequestToDB = (data) => {
         const cleaned = phoneValue.replace(/\D/g, '');
     
         if (!cleaned) {
-            transformed.mobile = '';
+            delete transformed.mobile;
         } else if (cleaned.length === 11 && cleaned.startsWith('0')) {
             transformed.mobile = '234' + cleaned.slice(1);
         } else if (cleaned.length === 13 && cleaned.startsWith('234')) {
@@ -298,30 +300,38 @@ export const deleteUser = async (req, res) => {
 
 export const toggleUserStatus = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        user.status = user.status === 'Active' ? 'Inactive' : 'Active';
-        await user.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user)
+      const user = await User.findById(req.params.id);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found',
         });
+      }
+  
+      const newStatus = user.status === 'Active' ? 'Inactive' : 'Active';
+      user.status = newStatus;
+  
+      if (newStatus === 'Inactive') {
+        user.blockReason = req.body.reason || 'No reason provided';
+      } else {
+        user.blockReason = undefined; // Clear reason on unblock
+      }
+  
+      await user.save();
+  
+      res.json({
+        success: true,
+        user: transformUserForFrontend(user),
+      });
     } catch (err) {
-        console.error('Admin toggleUserStatus error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error toggling user status' 
-        });
+      console.error('Admin toggleUserStatus error:', err);
+      res.status(500).json({
+        success: false,
+        message: 'Server error toggling user status',
+      });
     }
-};
+  };
+  
 
 export const updateWalletBalance = async (req, res) => {
     try {
@@ -587,101 +597,97 @@ export const generateAdminAccess = async (req, res) => {
   };
 
 export const requestEmailVerification = async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id);
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        if (user.verification?.emailVerified) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email is already verified'
-            });
-        }
-        
-        const verificationToken = jwt.sign(
-            { userId: user._id, email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-        
-        const response = {
-            success: true,
-            message: 'Email verification requested'
-        };
-        
-        if (process.env.NODE_ENV === 'development') {
-            response.verificationLink = `${process.env.CLIENT_URL}/verify-email?token=${verificationToken}`;
-        }
-        
-        user.verification.emailVerificationToken = verificationToken;
-        user.verification.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        await user.save();
-        
-        res.json(response);
-    } catch (err) {
-        console.error('Admin requestEmailVerification error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error requesting email verification' 
-        });
+try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    if (user.verification?.emailVerified) {
+    return res.status(400).json({ success: false, message: 'Email is already verified' });
+    }
+
+    const verificationToken = jwt.sign(
+    { userId: user._id, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: '24h' }
+    );
+
+    user.verification.emailVerificationToken = verificationToken;
+    user.verification.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await user.save();
+
+    // Send notification
+    sendNotification(user._id.toString(), {
+    title: 'Email Verification Requested',
+    message: 'Please verify your email address. A link has been generated.',
+    type: 'verification',
+    });
+
+    const response = {
+    success: true,
+    message: 'Email verification requested'
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+    response.verificationLink = `${process.env.CLIENT_URL}/verify-email?token=${verificationToken}`;
+    }
+
+    res.json(response);
+} catch (err) {
+    console.error('Admin requestEmailVerification error:', err);
+    res.status(500).json({ success: false, message: 'Server error requesting email verification' });
+}
 };
+  
 
 export const requestPhoneVerification = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        if (!user.mobile) {
-            return res.status(400).json({
-                success: false,
-                message: 'User has no phone number set'
-            });
-        }
-        
-        if (user.verification?.phoneVerified) {
-            return res.status(400).json({
-                success: false,
-                message: 'Phone is already verified'
-            });
-        }
-        
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-        
-        const response = {
-            success: true,
-            message: 'Phone verification requested'
-        };
-        
-        if (process.env.NODE_ENV === 'development') {
-            response.verificationCode = verificationCode;
-        }
-        
-        user.verification.phoneVerificationCode = verificationCode;
-        user.verification.phoneVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
-        await user.save();
-        
-        res.json(response);
+      const user = await User.findById(req.params.id);
+  
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+  
+      if (!user.mobile) {
+        return res.status(400).json({ success: false, message: 'User has no phone number set' });
+      }
+  
+      if (user.verification?.phoneVerified) {
+        return res.status(400).json({ success: false, message: 'Phone is already verified' });
+      }
+  
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+  
+      user.verification.phoneVerificationCode = verificationCode;
+      user.verification.phoneVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+  
+      // Send notification
+      sendNotification(user._id.toString(), {
+        title: 'Phone Verification Requested',
+        message: 'A phone verification code has been generated.',
+        type: 'verification',
+      });
+  
+      const response = {
+        success: true,
+        message: 'Phone verification requested'
+      };
+  
+      if (process.env.NODE_ENV === 'development') {
+        response.verificationCode = verificationCode;
+      }
+  
+      res.json(response);
     } catch (err) {
-        console.error('Admin requestPhoneVerification error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error requesting phone verification' 
-        });
+      console.error('Admin requestPhoneVerification error:', err);
+      res.status(500).json({ success: false, message: 'Server error requesting phone verification' });
     }
-};
+  };
+  
+  
 
 export const changeUserCurrency = async (req, res) => {
     try {
@@ -944,47 +950,154 @@ export const toggleTradeStatus = async (req, res) => {
 
 
 
+
+
+
 export const sendMessageToUser = async (req, res) => {
     try {
-        const { subject, message } = req.body;
+        const { subject, message, sendEmail } = req.body;
         const user = await User.findById(req.params.id);
-        
+
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        if (!subject || !message) {
-            return res.status(400).json({
-                success: false,
-                message: 'Subject and message are required'
-            });
-        }
-        
-        user.messages = user.messages || [];
-        user.messages.push({
-            subject,
-            message,
-            status: 'sent',
-            metadata: {
-                sentAt: new Date(),
-                adminId: req.user.id
-            }
-        });
-        
-        await user.save();
-        
-        res.json({
-            success: true,
-            message: 'Message sent successfully'
-        });
-    } catch (err) {
-        console.error('Admin sendMessageToUser error:', err);
-        res.status(500).json({ 
+        return res.status(404).json({
             success: false,
-            message: 'Server error sending message' 
+            message: 'User not found'
         });
-    }
+        }
+
+        if (!subject || !message) {
+        return res.status(400).json({
+            success: false,
+            message: 'Subject and message are required'
+        });
+        }
+
+        // ✅ Create and save to Message model
+        const newMessage = new Message({
+        sender: req.user.id,
+        recipient: user._id,
+        subject,
+        content: message,
+        status: 'sent',
+        isSystemMessage: true
+        });
+
+        await newMessage.save();
+
+        // ✅ Optional: you may skip pushing into user.messages[] if using Message model consistently
+        // user.messages.push(...); // ❌ This is redundant unless you're using it elsewhere
+
+        // ✅ Save notification
+        user.notifications = user.notifications || [];
+        user.notifications.push({
+        type: 'account',
+        title: subject,
+        content: message,
+        isRead: false,
+        createdAt: new Date(),
+        metadata: {
+            from: 'admin',
+            method: sendEmail ? 'email+inApp' : 'inApp',
+            adminId: req.user.id,
+            messageId: newMessage._id
+        }
+        });
+
+        await user.save();
+
+        // ✅ Send in-app WebSocket notification
+        if (typeof sendNotification === 'function') {
+        sendNotification(user._id.toString(), {
+            title: subject,
+            message,
+            type: 'admin',
+            createdAt: new Date()
+        });
+        }
+
+        // ✅ Send email if selected
+        if (sendEmail) {
+        await sendEmailToUser(user.email, subject, message);
+        }
+
+        res.json({
+        success: true,
+        message: 'Message sent, saved, and delivered'
+        });
+        } catch (err) {
+            console.error('Admin sendMessageToUser error:', err);
+            res.status(500).json({
+            success: false,
+            message: 'Server error sending message'
+            });
+        }
 };
+
+export const verifyEmail = async (req, res) => {
+    try {
+      const user = await User.findById(req.params.id);
+  
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+  
+      if (user.verification?.emailVerified) {
+        return res.status(400).json({ success: false, message: 'Email is already verified' });
+      }
+  
+      user.verification.emailVerified = true;
+      user.verification.emailVerificationToken = undefined;
+      user.verification.emailVerificationExpires = undefined;
+      await user.save();
+  
+      // Send notification
+      sendNotification(user._id.toString(), {
+        title: 'Email Verified',
+        message: 'Your email has been verified by the admin.',
+        type: 'success',
+      });
+  
+      res.json({ success: true, message: 'Email marked as verified successfully' });
+    } catch (err) {
+      console.error('Admin verifyEmail error:', err);
+      res.status(500).json({ success: false, message: 'Server error verifying email' });
+    }
+  };
+  
+  
+  
+export const verifyPhoneNumber = async (req, res) => {
+try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.verification?.phoneVerified) {
+    return res.status(400).json({ success: false, message: 'Phone number is already verified' });
+    }
+
+    user.verification.phoneVerified = true;
+    user.verification.phoneVerificationCode = undefined;
+    user.verification.phoneVerificationExpires = undefined;
+    await user.save();
+
+    // Send notification
+    sendNotification(user._id.toString(), {
+    title: 'Phone Verified',
+    message: 'Your phone number has been verified by the admin.',
+    type: 'success',
+    });
+
+    res.json({ success: true, message: 'Phone number marked as verified successfully' });
+} catch (err) {
+    console.error('Admin verifyPhoneNumber error:', err);
+    res.status(500).json({ success: false, message: 'Server error verifying phone number' });
+}
+};
+  
+  
+  
+
+  

@@ -24,6 +24,8 @@ import {
   updateUserSignal,
   sendMessageToUser,
   getSimpleUserList,
+  verifyEmail,            
+  verifyPhoneNumber 
 } from '../controllers/adminUserController.js';
 // main
 import { getBrowsingHistory } from '../controllers/browsingHistoryController.js';
@@ -40,11 +42,6 @@ import {
 
 import { getSettings, saveSettings } from '../controllers/settingsController.js';
 
-// import {
-//   assignToUser,
-//   getUserAssignments,
-//   updateAssignmentStatus
-// } from '../controllers/assignmentController.js';
 import {
   getDashboardStats,
   getUserGrowth
@@ -87,6 +84,8 @@ router.patch('/users/:id/withdrawal-lock', toggleWithdrawalLock);
 router.post('/users/:id/admin-access', generateAdminAccess);
 router.post('/users/:id/request-email-verification', requestEmailVerification);
 router.post('/users/:id/request-phone-verification', requestPhoneVerification);
+router.post('/users/:id/verify-email', verifyEmail);   
+router.post('/users/:id/verify-phone-number', verifyPhoneNumber);
 router.patch('/users/:id/currency', changeUserCurrency);
 router.delete('/users/:id/account', deleteUserAccount);
 router.post('/users/:id/assign-bot', assignBotToUser);

@@ -116,7 +116,7 @@ export const completeProfile = async (req, res) => {
     // Update user fields
     user.firstName = firstName;
     user.lastName = lastName;
-    user.phoneNumber = phoneNumber;
+    user.mobile = phoneNumber;
     user.country = country;
     user.gender = gender;
     user.currency = currency;

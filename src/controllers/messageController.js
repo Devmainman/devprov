@@ -51,6 +51,104 @@ export const sendMessage = async (req, res) => {
   }
 };
 
+// Get all messages sent by the currently logged-in admin
+export const getSentMessages = async (req, res) => {
+  console.log('REQ.USER:', req.user);
+
+  try {
+    const { page = 1, limit = 20, search } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = { sender: req.user.id };
+
+    if (search) {
+      query.$or = [
+        { subject: { $regex: search, $options: 'i' } },
+        { content: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const messages = await Message.find(query)
+      .populate('recipientDetails')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Message.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: messages,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('getSentMessages error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch sent messages'
+    });
+  }
+};
+
+
+
+// GET /admin/users/:id/all-messages
+export const getUserAllMessages = async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const [user, messages] = await Promise.all([
+      User.findById(userId).select('notifications fullName email').lean(),
+      Message.find({ recipient: userId })
+        .populate('senderDetails')
+        .sort({ createdAt: -1 })
+        .lean()
+    ]);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Combine all into a unified format (optional)
+    const notifications = user.notifications.map(n => ({
+      _type: 'notification',
+      title: n.title,
+      content: n.content,
+      isRead: n.isRead,
+      createdAt: n.createdAt,
+      metadata: n.metadata
+    }));
+
+    const emails = messages.map(m => ({
+      _type: 'email',
+      subject: m.subject,
+      content: m.content,
+      status: m.status,
+      createdAt: m.createdAt,
+      senderEmail: m.senderDetails?.email || 'Admin'
+    }));
+
+    res.json({
+      success: true,
+      data: [...emails, ...notifications].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      )
+    });
+  } catch (error) {
+    console.error('Error fetching all user messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user messages'
+    });
+  }
+};
+
+
 // Get all messages (admin view)
 export const getAllMessages = async (req, res) => {
   try {

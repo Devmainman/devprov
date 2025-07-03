@@ -6,30 +6,38 @@ import {
   getMessageDetails,
   updateMessage,
   deleteMessage,
-  resendMessage
+  resendMessage,
+  getUserAllMessages,
+  getSentMessages
 } from '../controllers/messageController.js';
 
 const router = express.Router();
 
-// Apply authentication and admin check middleware to all routes
+// Apply auth and admin checks globally
 router.use(authenticate, isAdmin);
 
-// Route: POST /messages - Send a new message
+// ✅ This must come first — before dynamic `/:id` routes
+router.get('/sent', getSentMessages);
+
+// For viewing all messages sent to a user (admin viewing specific user inbox)
+router.get('/user/:id/all-messages', getUserAllMessages);
+
+// Send new message
 router.post('/', sendMessage);
 
-// Route: GET /messages - Get all messages (supports optional filters)
-router.get('/:id', getAllMessages);
-
-// Route: GET /messages/:id - Get details of a specific message
-router.get('/:id', getMessageDetails);
-
-// Route: PUT /messages/:id - Update a message by ID
+// Update a message
 router.put('/:id', updateMessage);
 
-// Route: DELETE /messages/:id - Delete a message by ID
+// Delete a message
 router.delete('/:id', deleteMessage);
 
-// Route: POST /messages/:id/resend - Resend a message by ID
+// Resend a message
 router.post('/:id/resend', resendMessage);
+
+// Get details of a message
+router.get('/details/:id', getMessageDetails);
+
+// (Optional legacy) Get all messages using id — if this exists, ensure it doesn’t conflict
+// router.get('/:id', getAllMessages);
 
 export default router;

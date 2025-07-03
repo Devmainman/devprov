@@ -97,31 +97,23 @@ export const getCurrentUser = async (req, res) => {
     const user = await User.findById(req.user.id)
       .select('-password -otp -__v')
       .populate('referral.referredBy', 'firstName lastName accountId');
-    
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      accountId: user.accountId,
-      faceImage: user.verification.faceImage,
-      verification: user.verification,
-      referral: {
-        code: user.referral.code,
-        referredBy: user.referral.referredBy,
-        totalReferrals: user.referral.totalReferrals,
-        totalEarned: user.referral.totalEarned,
-        pendingBonus: user.referral.pendingBonus
-      }
-    });
+    console.log('User status & block reason:', user.status, user.blockReason);
+
+    // ✅ Return full user object (the way User.findById returns it)
+    res.json(user);
+
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+
 
 export const login = async (req, res) => {
   const { email, password } = req.body;
