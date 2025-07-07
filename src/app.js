@@ -112,7 +112,7 @@ app.use(fileUpload({
   parseNested: true,
   createParentPath: true
 }));
-app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
+app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
 app.use('/icons', express.static(path.join(__dirname, 'Uploads/icons')));
 
 // Apply trackHistory middleware
@@ -287,3 +287,5 @@ export const sendNotification = (userId, data) => {
   }
   return false;
 };
+
+export { activeConnections };

@@ -10,22 +10,33 @@ export const getTransactions = async (req, res) => {
     const skip = (page - 1) * limit;
     const userId = req.user.id;
 
-    // Fetch deposits, withdrawals, and admin credits
-    const [deposits, withdrawals, adminCredits, totalDeposits, totalWithdrawals, totalAdminCredits] = await Promise.all([
+    // Fetch deposits, withdrawals, admin credits, and referral bonuses separately
+    const [
+      deposits,
+      withdrawals,
+      adminCredits,
+      referralBonuses,
+      totalDeposits,
+      totalWithdrawals,
+      totalAdminCredits,
+      totalReferralBonuses
+    ] = await Promise.all([
       Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Withdrawal.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Transaction.find({ 
-        userId, 
+      Transaction.find({
+        userId,
         type: 'admin_credit',
-        status: 'completed' // Only include completed admin credits
+        status: 'completed'
+      }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.find({
+        userId,
+        type: 'referral_bonus',
+        status: 'completed'
       }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Deposit.countDocuments({ userId }),
       Withdrawal.countDocuments({ user: userId }),
-      Transaction.countDocuments({ 
-        userId, 
-        type: 'admin_credit',
-        status: 'completed'
-      })
+      Transaction.countDocuments({ userId, type: 'admin_credit', status: 'completed' }),
+      Transaction.countDocuments({ userId, type: 'referral_bonus', status: 'completed' })
     ]);
 
     // Combine and format transactions
@@ -50,17 +61,26 @@ export const getTransactions = async (req, res) => {
       })),
       ...adminCredits.map(ac => ({
         id: ac._id,
-        type: 'deposit', // Display as deposit
+        type: 'deposit', // Keep admin_credit shown as deposit
         amount: ac.amount,
         currency: ac.currency,
         status: ac.status,
         reference: ac.reference || `ADMIN-CREDIT-${ac._id.toString().slice(-6)}`,
         createdAt: ac.createdAt,
-        isAdminCredit: true // Additional flag to identify admin credits if needed
+        isAdminCredit: true
+      })),
+      ...referralBonuses.map(rb => ({
+        id: rb._id,
+        type: 'Referral Bonus', // Show referral_bonus with its own type
+        amount: rb.amount,
+        currency: rb.currency,
+        status: rb.status,
+        reference: rb.reference || `REF-BONUS-${rb._id.toString().slice(-6)}`,
+        createdAt: rb.createdAt
       }))
     ].sort((a, b) => b.createdAt - a.createdAt);
 
-    const total = totalDeposits + totalWithdrawals + totalAdminCredits;
+    const total = totalDeposits + totalWithdrawals + totalAdminCredits + totalReferralBonuses;
 
     res.json({
       success: true,
@@ -80,12 +100,13 @@ export const getTransactions = async (req, res) => {
       userId: req.user.id,
       query: req.query
     });
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Failed to fetch transactions' 
+      message: 'Failed to fetch transactions'
     });
   }
 };
+
 
 export const createDeposit = async (req, res) => {
   try {

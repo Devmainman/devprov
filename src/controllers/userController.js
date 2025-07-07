@@ -16,6 +16,7 @@ import PaymentMethod from '../models/PaymentMethod.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { activeConnections } from '../app.js';
 
 dotenv.config();
 
@@ -104,8 +105,10 @@ export const getCurrentUser = async (req, res) => {
 
     console.log('User status & block reason:', user.status, user.blockReason);
 
-    // ✅ Return full user object (the way User.findById returns it)
-    res.json(user);
+    const userObj = user.toObject(); // convert Mongoose doc to plain object
+    userObj.isOnline = activeConnections.has(user._id.toString()); // 🔥 Add isOnline flag here
+
+    res.json(userObj); // ✅ Send user object with isOnline
 
   } catch (err) {
     console.error(err.message);

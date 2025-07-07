@@ -8,13 +8,14 @@ import Setting from '../models/Setting.js';
 import jwt from 'jsonwebtoken';
 import Currency from '../models/Currency.js'; 
 import { sendNotification } from '../app.js';
+import { activeConnections } from '../app.js';
+
 
 const transformUserForFrontend = (user) => {
     if (!user) return null;
 
     const formatPhone = (phone) => {
         if (!phone || phone.trim() === '') return 'Not set';
-        
         const cleaned = phone.replace(/\D/g, '');
         if (cleaned.startsWith('234') && cleaned.length === 12) {
             return `+${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6, 9)} ${cleaned.substring(9)}`;
@@ -31,7 +32,7 @@ const transformUserForFrontend = (user) => {
         email: user.email,
         fullName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Not set',
         country: user.country || user.address?.country || 'Not set',
-        currency: user.currency, // REMOVED DEFAULT USD
+        currency: user.currency,
         accountType: user.accountType || 'Basic',
         walletBalance: typeof user.balance === 'number' ? user.balance : 0,
         mobile: formatPhone(user.mobile),
@@ -46,9 +47,11 @@ const transformUserForFrontend = (user) => {
         tradingSignal: user.tradingSignal || 'hold',
         tradingSignalUpdatedAt: user.tradingSignalUpdatedAt,
         withdrawalLocked: user.withdrawalLocked || false,
-        messages: user.messages || []
+        messages: user.messages || [],
+        isOnline: activeConnections.has(user._id.toString()) // 🔥 Add this line
     };
 };
+
 
 const transformRequestToDB = (data) => {
     const transformed = { ...data };
