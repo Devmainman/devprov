@@ -12,32 +12,28 @@ export const getTransactions = async (req, res) => {
 
     // Fetch deposits, withdrawals, admin credits, and referral bonuses separately
     const [
-      deposits,
-      withdrawals,
-      adminCredits,
-      referralBonuses,
-      totalDeposits,
-      totalWithdrawals,
-      totalAdminCredits,
-      totalReferralBonuses
-    ] = await Promise.all([
-      Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Withdrawal.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Transaction.find({
-        userId,
-        type: 'admin_credit',
-        status: 'completed'
-      }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Transaction.find({
-        userId,
-        type: 'referral_bonus',
-        status: 'completed'
-      }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Deposit.countDocuments({ userId }),
-      Withdrawal.countDocuments({ user: userId }),
-      Transaction.countDocuments({ userId, type: 'admin_credit', status: 'completed' }),
-      Transaction.countDocuments({ userId, type: 'referral_bonus', status: 'completed' })
-    ]);
+        deposits,
+        withdrawals,
+        adminCredits,
+        referralBonuses,
+        upgradeTransactions,
+        totalDeposits,
+        totalWithdrawals,
+        totalAdminCredits,
+        totalReferralBonuses,
+        totalUpgradeTransactions // ← Add this
+      ] = await Promise.all([
+        Deposit.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Withdrawal.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Transaction.find({ userId, type: 'admin_credit', status: 'completed' }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Transaction.find({ userId, type: 'referral_bonus', status: 'completed' }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Transaction.find({ userId, type: 'upgrade' }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Deposit.countDocuments({ userId }),
+        Withdrawal.countDocuments({ user: userId }),
+        Transaction.countDocuments({ userId, type: 'admin_credit', status: 'completed' }),
+        Transaction.countDocuments({ userId, type: 'referral_bonus', status: 'completed' }),
+        Transaction.countDocuments({ userId, type: 'upgrade' }) // 👈 Here
+      ]);
 
     // Combine and format transactions
     const combinedTransactions = [
@@ -77,10 +73,19 @@ export const getTransactions = async (req, res) => {
         status: rb.status,
         reference: rb.reference || `REF-BONUS-${rb._id.toString().slice(-6)}`,
         createdAt: rb.createdAt
+      })),
+      ...upgradeTransactions.map(upg => ({
+        id: upg._id,
+        type: 'Account Upgrade',
+        amount: upg.amount,
+        currency: upg.currency,
+        status: upg.status,
+        reference: upg.reference || `UPGRADE-${upg._id.toString().slice(-6)}`,
+        createdAt: upg.createdAt
       }))
     ].sort((a, b) => b.createdAt - a.createdAt);
 
-    const total = totalDeposits + totalWithdrawals + totalAdminCredits + totalReferralBonuses;
+    const total = totalDeposits + totalWithdrawals + totalAdminCredits + totalReferralBonuses + totalUpgradeTransactions;
 
     res.json({
       success: true,

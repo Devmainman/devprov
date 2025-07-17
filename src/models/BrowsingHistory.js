@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const browsingHistorySchema = new mongoose.Schema({
   ip: { type: String, required: true },
   domain: { type: String, required: true },
-  userRole: { type: String, enum: ['Admin', 'Premium User', 'Guest', 'User'], default: 'Guest' },
+  userRole: { type: String, enum: ['admin', 'premium user', 'guest', 'user'], default: 'Guest' },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   date: { type: Date, default: Date.now },
   basicInfo: {

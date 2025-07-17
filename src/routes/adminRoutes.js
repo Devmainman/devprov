@@ -11,7 +11,7 @@ import {
   deleteUser,
   toggleUserStatus,
   updateWalletBalance,
-  assignPackage,
+  
   resetUserPassword,
   toggleWithdrawalLock,
   generateAdminAccess,
@@ -27,6 +27,8 @@ import {
   verifyEmail,            
   verifyPhoneNumber 
 } from '../controllers/adminUserController.js';
+
+import { assignPackage, editUserPackage } from  '../controllers/adminAssignPackage.js';
 // main
 import { getBrowsingHistory } from '../controllers/browsingHistoryController.js';
 import { 
@@ -78,7 +80,8 @@ router.get('/popup-invoices', getPopupInvoices);
 router.get('/popup-messages', getPopupMessages);
 
 // User action routes
-router.post('/users/:id/packages/:packageId', assignPackage);
+router.post('/users/:userId/packages/:packageId', assignPackage);
+router.patch('/users/:id/edit-package', editUserPackage);
 router.post('/users/:id/reset-password', resetUserPassword);
 router.patch('/users/:id/withdrawal-lock', toggleWithdrawalLock);
 router.post('/users/:id/admin-access', generateAdminAccess);

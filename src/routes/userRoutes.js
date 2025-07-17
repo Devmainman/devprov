@@ -7,6 +7,7 @@ import Currency from '../models/Currency.js';
 import User from '../models/User.js';
 import { signup, login, getCurrentUser, changePassword, submitPopupForm, payPopupInvoice, getUserAssignments } from '../controllers/userController.js';
 import { getActivePopup, completePopup, getAvailablePopupForms, getAvailablePopupInvoices, acknowledgePopupMessage, getAvailablePopupMessages } from '../controllers/popupController.js';
+import { markPackageUpgradeStarted } from '../controllers/userController.js';
 
 const router = express.Router();
 
@@ -68,7 +69,7 @@ router.post('/logout', authenticate, (req, res) => {
   });
 });
 
-
+router.post('/package-upgrade/start', authenticate, markPackageUpgradeStarted);
 
 // Popup routes
 router.get('/popups/active', authenticate, getActivePopup);

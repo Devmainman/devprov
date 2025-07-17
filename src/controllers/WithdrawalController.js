@@ -5,6 +5,8 @@ import Transaction from '../models/Transaction.js';
 import WithdrawalToken from '../models/WithdrawalToken.js';
 import User from '../models/User.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getUserThreshold } from '../utils/getUserThreshold.js';
+
 
 export const createWithdrawal = async (req, res) => {
   const session = await mongoose.startSession();
@@ -26,6 +28,18 @@ export const createWithdrawal = async (req, res) => {
       session.endSession();
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    const maxThreshold = await getUserThreshold(user);
+
+    if (user.balance >= maxThreshold) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({
+        success: false,
+        message: 'You have reached your account threshold. Withdrawals are currently disabled.'
+      });
+    }
+
 
     // 🔒 Check if withdrawal is locked
     if (user.withdrawalLocked) {

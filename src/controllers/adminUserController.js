@@ -425,46 +425,7 @@ export const updateWalletBalance = async (req, res) => {
   };
   
 
-export const assignPackage = async (req, res) => {
-    try {
-        const { userId, packageId } = req.params;
-        
-        const user = await User.findById(userId);
-        const pkg = await Package.findById(packageId);
-        
-        if (!user || !pkg) {
-            return res.status(404).json({
-                success: false,
-                message: 'User or package not found'
-            });
-        }
-        
-        user.accountType = pkg.name;
-        user.packageId = pkg._id;
-        await user.save();
-        
-        const assignment = new Assignment({
-            userId: user._id,
-            adminId: req.user.id,
-            type: 'package',
-            itemId: pkg._id,
-            status: 'completed'
-        });
-        
-        await assignment.save();
-        
-        res.json({
-            success: true,
-            user: transformUserForFrontend(user)
-        });
-    } catch (err) {
-        console.error('Admin assignPackage error:', err);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error assigning package' 
-        });
-    }
-};
+
 
 export const resetUserPassword = async (req, res) => {
     try {
@@ -962,27 +923,27 @@ export const sendMessageToUser = async (req, res) => {
         const user = await User.findById(req.params.id);
 
         if (!user) {
-        return res.status(404).json({
-            success: false,
-            message: 'User not found'
-        });
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
         }
 
         if (!subject || !message) {
-        return res.status(400).json({
-            success: false,
-            message: 'Subject and message are required'
-        });
+            return res.status(400).json({
+                success: false,
+                message: 'Subject and message are required'
+            });
         }
 
         // ✅ Create and save to Message model
         const newMessage = new Message({
-        sender: req.user.id,
-        recipient: user._id,
-        subject,
-        content: message,
-        status: 'sent',
-        isSystemMessage: true
+            sender: req.user.id,
+            recipient: user._id,
+            subject,
+            content: message,
+            status: 'sent',
+            isSystemMessage: true
         });
 
         await newMessage.save();
@@ -993,47 +954,47 @@ export const sendMessageToUser = async (req, res) => {
         // ✅ Save notification
         user.notifications = user.notifications || [];
         user.notifications.push({
-        type: 'account',
-        title: subject,
-        content: message,
-        isRead: false,
-        createdAt: new Date(),
-        metadata: {
-            from: 'admin',
-            method: sendEmail ? 'email+inApp' : 'inApp',
-            adminId: req.user.id,
-            messageId: newMessage._id
-        }
+            type: 'account',
+            title: subject,
+            content: message,
+            isRead: false,
+            createdAt: new Date(),
+            metadata: {
+                from: 'admin',
+                method: sendEmail ? 'email+inApp' : 'inApp',
+                adminId: req.user.id,
+                messageId: newMessage._id
+            }
         });
 
         await user.save();
 
         // ✅ Send in-app WebSocket notification
         if (typeof sendNotification === 'function') {
-        sendNotification(user._id.toString(), {
-            title: subject,
-            message,
-            type: 'admin',
-            createdAt: new Date()
-        });
+            sendNotification(user._id.toString(), {
+                title: subject,
+                message,
+                type: 'admin',
+                createdAt: new Date()
+            });
         }
 
         // ✅ Send email if selected
         if (sendEmail) {
-        await sendEmailToUser(user.email, subject, message);
+            await sendEmailToUser(user.email, subject, message);
         }
 
         res.json({
-        success: true,
-        message: 'Message sent, saved, and delivered'
+            success: true,
+            message: 'Message sent, saved, and delivered'
         });
-        } catch (err) {
-            console.error('Admin sendMessageToUser error:', err);
-            res.status(500).json({
+    } catch (err) {
+        console.error('Admin sendMessageToUser error:', err);
+        res.status(500).json({
             success: false,
             message: 'Server error sending message'
-            });
-        }
+        });
+    }
 };
 
 export const verifyEmail = async (req, res) => {

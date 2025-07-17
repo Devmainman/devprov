@@ -1,4 +1,5 @@
 import BrowsingHistory from '../models/BrowsingHistory.js';
+import useragent from 'useragent';
 import Setting from '../models/Setting.js';
 import pkg from 'tldjs';
 const { getDomain } = pkg;
@@ -15,13 +16,16 @@ export const getBrowsingHistory = async (req, res) => {
       limit = 10
     } = req.query;
 
-    // Get frontendURL domain
-    const settings = await Setting.findOne().select('frontendURL');
+    // Get settings for frontend domain
+    const settings = await Setting.findOne();
     const frontendURL = settings?.frontendURL || 'http://localhost:1200';
     const frontendDomain = url.parse(frontendURL).hostname || getDomain(frontendURL);
 
-    // Build query
-    const query = { domain: frontendDomain };
+    // TEMP: Remove domain filtering for local testing
+    const query = {}; // Allow all domains
+    // In production, re-enable domain filtering like:
+    // const query = process.env.NODE_ENV === 'development' ? {} : { domain: frontendDomain };
+
     if (search) {
       query.$or = [
         { ip: { $regex: search, $options: 'i' } },
@@ -29,6 +33,7 @@ export const getBrowsingHistory = async (req, res) => {
         { userRole: { $regex: search, $options: 'i' } }
       ];
     }
+
     if (role !== 'all') {
       query.userRole = role;
     }
@@ -69,3 +74,60 @@ export const getBrowsingHistory = async (req, res) => {
     });
   }
 };
+
+export const recordVisit = async (req, res) => {
+  try {
+    const { url, timestamp } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const user = req.user || null;
+    const domain = req.hostname;
+
+    const agent = useragent.parse(req.headers['user-agent'] || '');
+
+    const visit = {
+      url,
+      timestamp: timestamp || new Date(),
+    };
+
+    // Try to find an existing history doc
+    let history = await BrowsingHistory.findOne({ ip, userId: user?._id || null, domain });
+
+    if (history) {
+      // ✅ Update existing history
+      history.visitedPages.push(visit);
+      history.basicInfo.pagesVisited += 1;
+      await history.save();
+    } else {
+      // ✅ Create new history
+      const basicInfo = {
+        device: agent.device.toString() || 'Unknown',
+        os: agent.os.toString() || 'Unknown',
+        browser: agent.toAgent() || 'Unknown',
+        resolution: '',
+        language: req.headers['accept-language']?.split(',')[0] || 'Unknown',
+        referrer: req.headers['referer'] || '',
+        pagesVisited: 1,
+        sessionDuration: '',
+        interactions: 0
+      };
+
+      history = await BrowsingHistory.create({
+        ip,
+        domain,
+        userId: user?._id || null,
+        userRole: user?.role || 'Guest',
+        basicInfo,
+        visitedPages: [visit]
+      });
+    }
+
+    res.status(200).json({ success: true, data: history });
+
+  } catch (err) {
+    console.error('❌ Error recording visit:', err);
+    res.status(500).json({ success: false, message: 'Failed to record visit' });
+  }
+};
+
+
+

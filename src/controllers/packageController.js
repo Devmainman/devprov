@@ -1,5 +1,7 @@
 import Package from '../models/Package.js';
 import Setting from '../models/Setting.js';
+import Currency from '../models/Currency.js';
+import User from '../models/User.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
@@ -83,7 +85,7 @@ export const createPackage = async (req, res) => {
     const newPackage = new Package({
       name,
       icon: iconPath,
-      currency: await getDefaultCurrency(),
+      currency: currency || await getDefaultCurrency(),
       amount: parseFloat(amount),
       status: status || 'Active',
       benefits: Array.isArray(parsedBenefits) 
@@ -127,6 +129,58 @@ export const getPackages = async (req, res) => {
     });
   }
 };
+
+export const getUserPackages = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID required' });
+    }
+
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const userCurrencyCode = user.currency;
+    const userCurrency = await Currency.findOne({ code: userCurrencyCode });
+    if (!userCurrency) {
+      return res.status(400).json({ success: false, message: 'User currency not supported' });
+    }
+
+    const packages = await Package.find({ status: 'Active' }).sort({ amount: 1 }).lean();
+
+    const currencyRates = await Currency.find({});
+    const rateMap = {};
+    for (const c of currencyRates) {
+      rateMap[c.code] = c.rate;
+    }
+
+    const convertedPackages = packages.map(pkg => {
+      const baseRate = rateMap[pkg.currency];
+      const targetRate = userCurrency.rate;
+      let convertedAmount = pkg.amount;
+
+      if (baseRate && targetRate) {
+        convertedAmount = (pkg.amount * targetRate) / baseRate;
+      }
+
+      return {
+        ...pkg,
+        originalAmount: pkg.amount,
+        originalCurrency: pkg.currency,
+        amount: parseFloat(convertedAmount.toFixed(2)),
+        currency: userCurrency.code
+      };
+    });
+
+    res.json({ success: true, packages: convertedPackages });
+  } catch (err) {
+    console.error('Get User Packages Error:', err);
+    res.status(500).json({ success: false, message: 'Server error fetching packages' });
+  }
+};
+
 
 // Update a package
 export const updatePackage = async (req, res) => {
@@ -177,7 +231,7 @@ export const updatePackage = async (req, res) => {
 
     const updateData = {
       name,
-      currency: await getDefaultCurrency(),
+      currency: currency || await getDefaultCurrency(),
       amount: parseFloat(amount),
       status: status || 'Active',
       benefits: Array.isArray(parsedBenefits) 

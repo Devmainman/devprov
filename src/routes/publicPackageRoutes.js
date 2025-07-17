@@ -1,10 +1,13 @@
-// routes/publicPackageRoutes.js
 import express from 'express';
-import { getPackages } from '../controllers/packageController.js';
+import { getPackages, getUserPackages } from '../controllers/packageController.js';
+import { authenticate, isAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get all active packages (no auth required)
+router.use(authenticate);
+
+// Public route — no authentication needed
+router.get('/user-packages', getUserPackages);
 router.get('/', getPackages);
 
 export default router;

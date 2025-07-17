@@ -13,10 +13,12 @@ import PopupInvoice from '../models/PopupInvoice.js';
 import PopupMessage from '../models/PopupMessage.js';
 import Invoice from '../models/Invoice.js';
 import PaymentMethod from '../models/PaymentMethod.js';
+import PackageUpgradeInteraction from '../models/PackageUpgradeInteraction.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { activeConnections } from '../app.js';
+import { getUserThreshold } from '../utils/getUserThreshold.js';
 
 dotenv.config();
 
@@ -97,19 +99,39 @@ export const getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select('-password -otp -__v')
-      .populate('referral.referredBy', 'firstName lastName accountId');
+      .populate('referral.referredBy', 'firstName lastName accountId')
+      .populate('pendingPackage')
+      .populate('accountType');
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    console.log('User status & block reason:', user.status, user.blockReason);
+    const threshold = await getUserThreshold(user);
+    const usage = (user.balance / threshold) * 100;
 
-    const userObj = user.toObject(); // convert Mongoose doc to plain object
-    userObj.isOnline = activeConnections.has(user._id.toString()); // 🔥 Add isOnline flag here
+    const userObj = user.toObject(); // Convert to plain object for modification
 
-    res.json(userObj); // ✅ Send user object with isOnline
+    // Attach threshold info
+    userObj.thresholdInfo = {
+      threshold,
+      usagePercent: parseFloat(usage.toFixed(2)),
+      nearLimit: usage >= 60 && usage < 80,
+      warning: usage >= 80 && usage < 100,
+      exhausted: usage >= 100
+    };
 
+    // Attach online status
+    userObj.isOnline = activeConnections.has(req.user.id.toString());
+
+    // Attach package interaction flags
+    const interaction = await PackageUpgradeInteraction.findOne({ userId: req.user.id });
+    const pendingId = user.pendingPackage?._id?.toString();
+    const startedId = interaction?.pendingPackageId?.toString();
+    userObj.packagePaymentStarted = !!interaction && pendingId === startedId;
+    userObj.hasNewPendingPackage = !!pendingId && pendingId !== startedId;
+
+    userObj.accountTypeName = user.accountType?.name || 'Basic';
+
+    res.json(userObj); // ✅ Send full modified user object
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server error' });
@@ -272,6 +294,28 @@ export const getReferralDetails = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const markPackageUpgradeStarted = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { pendingPackageId } = req.body;
+
+    if (!pendingPackageId) {
+      return res.status(400).json({ success: false, message: 'Package ID required' });
+    }
+
+    const existing = await PackageUpgradeInteraction.findOneAndUpdate(
+      { userId },
+      { pendingPackageId, status: 'started', startedAt: new Date() },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, message: 'Interaction marked', data: existing });
+  } catch (err) {
+    console.error('Interaction error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

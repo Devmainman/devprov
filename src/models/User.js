@@ -16,6 +16,11 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters']
   },
+  pendingPackage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Package',
+    default: null
+  },  
   accountId: {
     type: String,
     required: true,
@@ -101,10 +106,10 @@ const userSchema = new mongoose.Schema({
     expiresAt: { type: Date }
   },
   accountType: { 
-    type: String, 
-    enum: ['Basic', 'Premium', 'VIP'], 
-    default: 'Basic' 
-  },
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Package',
+  default: null
+  }, 
   status: { 
     type: String, 
     enum: ['Active', 'Inactive'], 
@@ -254,6 +259,18 @@ userSchema.pre('save', function(next) {
 userSchema.virtual('walletBalance').get(function() {
   return this.balance || 0;
 });
+
+// Add virtual for accountTypeName (e.g. "Basic", "Gold", etc.)
+userSchema.virtual('accountTypeName').get(function () {
+  // If accountType is null, user is on the Basic plan
+  if (!this.accountType) return 'Basic';
+  // If accountType is populated with a Package object
+  if (typeof this.accountType === 'object' && this.accountType.name) {
+    return this.accountType.name;
+  }
+  return 'Premium'; // fallback, in case it's not populated but exists
+});
+
 
 // Add real-time balance update method
 userSchema.methods.updateBalance = async function(amount, type, session = null) {

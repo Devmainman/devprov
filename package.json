@@ -4,12 +4,12 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
-  "start": "node dist/app.obf.js",
-  "dev": "nodemon src/app.js",
-  "build": "esbuild src/app.js --bundle --platform=node --target=node18 --format=esm --outfile=dist/app.js",
-  "secure": "npm run build && javascript-obfuscator dist/app.js --output dist/app.obf.js",
-  "obfuscate": "javascript-obfuscator dist/app.js --output dist/app.obf.js --config obfuscator-config.js"
-},
+    "start": "node dist/app.obf.js",
+    "dev": "nodemon src/app.js",
+    "build": "esbuild src/app.js --bundle --platform=node --target=node18 --format=esm --outfile=dist/app.js",
+    "secure": "npm run build && javascript-obfuscator dist/app.js --output dist/app.obf.js",
+    "obfuscate": "javascript-obfuscator dist/app.js --output dist/app.obf.js --config obfuscator-config.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -39,6 +39,7 @@
     "tldjs": "^2.3.1",
     "twilio": "^5.6.0",
     "ua-parser-js": "^2.0.3",
+    "useragent": "^2.3.0",
     "ws": "^8.18.2",
     "xss-clean": "^0.1.1"
   },

@@ -8,6 +8,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { getUserThreshold } from '../utils/getUserThreshold.js';
+
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -42,6 +44,18 @@ export const createDeposit = async (req, res) => {
         message: 'Payment method and amount are required'
       });
     }
+
+    // const maxThreshold = await getUserThreshold(user);
+
+    // if (user.balance >= maxThreshold) {
+    //   await session.abortTransaction();
+    //   session.endSession();
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: 'Your balance has reached the maximum threshold. Deposits are not allowed.'
+    //   });
+    // }
+
 
     if (!req.files?.paymentProof) {
       await session.abortTransaction();

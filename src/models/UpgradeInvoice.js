@@ -6,10 +6,20 @@ const upgradeInvoiceSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  userSnapshot: {
+    accountId: String,
+    fullName: String,
+    email: String
+  },
   package: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Package',
     required: true
+  },
+  packageSnapshot: {
+    name: String,
+    amount: Number,
+    currency: String
   },
   date: {
     type: Date,
@@ -45,8 +55,14 @@ const upgradeInvoiceSchema = new mongoose.Schema({
   },
   adminNotes: {
     type: String
-  }
+  },
+  transactionReference: {
+  type: String,
+  required: true,
+  unique: true
+}
 }, { timestamps: true });
+
 
 // Virtual for formatted amount display
 upgradeInvoiceSchema.virtual('formattedAmount').get(function() {

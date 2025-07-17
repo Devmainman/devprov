@@ -12,11 +12,11 @@ const packageSchema = new mongoose.Schema({
     trim: true
   },
   currency: {
-    type: String,
-    required: true,
-    default: 'USD',
-    enum: ['USD', 'EUR', 'GBP', 'NGN'] // Add other currencies as needed
-  },
+  type: String,
+  required: true, // still required, but flexible
+  trim: true,
+  default: 'USD' // fallback, just in case settings missing
+},
   amount: {
     type: Number,
     required: true,
